@@ -35,9 +35,13 @@ class Team(models.Model):
 
 
 class Player(models.Model):
-    """Telegram yoki Google orqali kirgan foydalanuvchi."""
+    """Telegram Mini App orqali kirgan foydalanuvchi."""
 
     telegram_id = models.BigIntegerField(unique=True, null=True, blank=True)
+
+    # ESKI maydon: Google OAuth va dasturchi kirishi olib tashlangan.
+    # Ustun saqlanyapti, chunki jonli bazada eski yozuvlar bor va uni
+    # o'chirish migratsiya talab qiladi. Yangi yozuvlarda doim NULL.
     google_sub = models.CharField(max_length=64, unique=True, null=True, blank=True)
 
     # --- do'st chaqirish ---
@@ -79,9 +83,9 @@ class Player(models.Model):
     def max_energy(self) -> int:
         """Do'st chaqirgan har bir foydalanuvchi zaxirani oshiradi.
 
-        Viral o'sishning asosiy turtki mexanizmi: chaqirilgan do'st
-        haqiqatan kirgandagina bonus beriladi (soxta hisoblardan himoya —
-        kirish Telegram yoki Google orqali tekshiriladi).
+        Viral o'sishning asosiy turtki mexanizmi. Soxta hisoblardan
+        himoya: kirish faqat Telegram orqali va bonus do'st haqiqatan
+        chiza boshlagach beriladi (batafsil — canvas/invites.py).
         """
         bonus = min(self.invites_count * settings.INVITE_BONUS_ENERGY,
                     settings.INVITE_BONUS_MAX)

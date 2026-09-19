@@ -1,7 +1,9 @@
-"""Avtorizatsiya: Telegram WebApp initData, Google OAuth, JWT.
+"""Avtorizatsiya: Telegram WebApp initData va JWT.
 
-Bot/spamning oldini olish uchun anonim kirish yo'q — har bir piksel
-aniq bir hisobga bog'lanadi.
+Yagona kirish yo'li — Telegram Mini App. Google OAuth ham, parolsiz
+"dasturchi kirishi" ham ataylab olib tashlangan: imzo bot tokeni bilan
+tekshirilgani uchun har bir piksel haqiqiy Telegram hisobiga bog'lanadi
+va soxta hisob ochish qimmatga tushadi.
 """
 from __future__ import annotations
 
@@ -66,34 +68,6 @@ def verify_telegram(init_data: str) -> dict:
             p for p in (user.get("first_name"), user.get("last_name")) if p
         ),
         "photo_url": user.get("photo_url", "") or "",
-    }
-
-
-# --------------------------------------------------------------------------
-# Google OAuth (id_token)
-# --------------------------------------------------------------------------
-def verify_google(id_token_str: str) -> dict:
-    from google.auth.transport import requests as g_requests
-    from google.oauth2 import id_token as g_id_token
-
-    if not settings.GOOGLE_CLIENT_ID:
-        raise AuthError("GOOGLE_CLIENT_ID sozlanmagan")
-    try:
-        info = g_id_token.verify_oauth2_token(
-            id_token_str, g_requests.Request(), settings.GOOGLE_CLIENT_ID
-        )
-    except Exception as exc:
-        raise AuthError(f"Google token noto'g'ri: {exc}") from exc
-
-    if not info.get("email_verified", False):
-        raise AuthError("Email tasdiqlanmagan")
-
-    return {
-        "provider": "google",
-        "google_sub": info["sub"],
-        "username": (info.get("email") or "").split("@")[0],
-        "display_name": info.get("name", "") or "",
-        "photo_url": info.get("picture", "") or "",
     }
 
 

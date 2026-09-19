@@ -12,7 +12,7 @@ from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 from ninja.security import HttpBearer
 
-from .auth import AuthError, client_ip, decode_jwt, issue_jwt, verify_google, verify_telegram
+from .auth import AuthError, client_ip, decode_jwt, issue_jwt, verify_telegram
 from .cooldown import cooldown_seconds
 from .invites import credit_pending
 from .models import Player, Report, Team
@@ -42,11 +42,6 @@ auth = Bearer()
 # --------------------------------------------------------------------------
 class TelegramIn(Schema):
     init_data: str
-    ref: str = ""
-
-
-class GoogleIn(Schema):
-    id_token: str
     ref: str = ""
 
 
@@ -95,15 +90,12 @@ def _apply_invite(player: Player, ref: str) -> None:
 
 
 def _login(request, info: dict, ref: str = "") -> TokenOut:
-    lookup = ({"telegram_id": info["telegram_id"]}
-              if info["provider"] == "telegram"
-              else {"google_sub": info["google_sub"]})
-
-    player, created = Player.objects.get_or_create(**lookup, defaults={
-        "username": info["username"],
-        "display_name": info["display_name"],
-        "photo_url": info["photo_url"],
-    })
+    player, created = Player.objects.get_or_create(
+        telegram_id=info["telegram_id"], defaults={
+            "username": info["username"],
+            "display_name": info["display_name"],
+            "photo_url": info["photo_url"],
+        })
     ip = client_ip(request)
     player.last_ip = ip
     player.display_name = info["display_name"] or player.display_name
@@ -144,43 +136,9 @@ def _tg_start_param(init_data: str) -> str:
     return dict(parse_qsl(init_data)).get("start_param", "")
 
 
-@api.post("/auth/google", response=TokenOut, auth=None)
-def auth_google(request, data: GoogleIn):
-    try:
-        info = verify_google(data.id_token)
-    except AuthError as exc:
-        raise HttpError(401, str(exc)) from exc
-    return _login(request, info, data.ref)
-
-
-class DevIn(Schema):
-    name: str = ""
-    ref: str = ""
-
-
-@api.post("/auth/dev", response=TokenOut, auth=None)
-def auth_dev(request, data: DevIn):
-    """Vaqtinchalik dasturchi kirishi — sinov uchun.
-
-    settings.DEV_LOGIN o'chiq bo'lsa, endpoint umuman yo'qdek javob beradi
-    (404), ya'ni ishlab chiqarishda uning borligi ham bilinmaydi.
-    """
-    if not settings.DEV_LOGIN:
-        raise HttpError(404, "Topilmadi")
-
-    import uuid
-
-    name = (data.name or "").strip()[:32]
-    # Nom berilmasa — har safar yangi hisob. Ikkita tabda ikki xil
-    # foydalanuvchi bo'lib sinash uchun shunday qulay.
-    sub = f"dev:{name}" if name else f"dev:{uuid.uuid4().hex[:12]}"
-    return _login(request, {
-        "provider": "google",              # google_sub maydonidan foydalanamiz
-        "google_sub": sub,
-        "username": name or sub.split(":")[1],
-        "display_name": name or f"Dev {sub.split(':')[1][:6]}",
-        "photo_url": "",
-    }, data.ref)
+# Google OAuth va parolsiz "dasturchi kirishi" ataylab olib tashlangan.
+# Yagona kirish yo'li — Telegram Mini App: imzo bot tokeni bilan
+# tekshiriladi, ya'ni har bir piksel haqiqiy Telegram hisobiga bog'lanadi.
 
 
 # --------------------------------------------------------------------------

@@ -38,10 +38,8 @@ def _page() -> str:
     html = html.replace("const DEMO       = true;", "const DEMO       = false;")
 
     config = json.dumps({
-        "google_client_id": settings.GOOGLE_CLIENT_ID,
         "telegram_enabled": bool(settings.TELEGRAM_BOT_TOKEN),
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
-        "dev_login": settings.DEV_LOGIN,
         "max_energy": settings.MAX_ENERGY,
         "canvas_size": settings.CANVAS_SIZE,
         "invite_bonus": settings.INVITE_BONUS_ENERGY,
@@ -50,7 +48,6 @@ def _page() -> str:
         "</body>",
         f"<script>window.MP_CONFIG = {config};</script>\n"
         '<script src="https://telegram.org/js/telegram-web-app.js"></script>\n'
-        '<script src="https://accounts.google.com/gsi/client" async defer></script>\n'
         # static() — ManifestStaticFilesStorage nomga hash qo'shadi,
         # shuning uchun yo'lni qo'lda yozib bo'lmaydi.
         f'<script src="{_asset("onboarding.js")}"></script>\n'

@@ -6,11 +6,12 @@ uvicorn[standard]==0.34.0
 redis==5.2.1
 psycopg[binary,pool]==3.2.4
 PyJWT==2.10.1
-google-auth==2.38.0
 python-dotenv==1.0.1
 whitenoise==6.8.2
 Pillow==11.1.0
 
+# google-auth ataylab yo'q: kirish faqat Telegram Mini App orqali.
+
 # Faqat lokal sinov uchun (FAKE_REDIS=1). Ishlab chiqarishda kerak emas,
-# lekin o'rnatilgani zarar qilmaydi — kod uni faqat flag yoqilganda import qiladi.
+# lekin o'rnatilgani zarar qilmaydi: kod uni faqat flag yoqilganda import qiladi.
 fakeredis[lua]==2.26.2

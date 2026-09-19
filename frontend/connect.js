@@ -99,29 +99,35 @@
     box(6, 33, 49, 33, 3);           // soya
   }
 
-  /* Oddiy brauzer — Google orqali kirish ekrani */
+  /* Oddiy brauzer — bu yerdan chizib bo'lmaydi, Telegram'ga yo'naltiramiz.
+   *
+   * Yagona kirish yo'li Telegram Mini App: imzo bot tokeni bilan
+   * tekshiriladi, ya'ni soxta hisob ochish qimmatga tushadi. Shuning
+   * uchun bu ekran kirish emas — havola beradi. Promise ataylab hech
+   * qachon hal bo'lmaydi: doska orqada ko'rinib turadi, lekin chizib
+   * bo'lmaydi.
+   */
   function showLoginScreen(ref) {
-    return new Promise(function (resolve, reject) {
+    return new Promise(function () {
+      var bot = CFG.bot_username || '';
+      var link = bot
+        ? 'https://t.me/' + bot + '/app' + (ref ? '?startapp=' + ref : '')
+        : '';
+
       var box = document.createElement('div');
       box.id = 'mp-login';
       box.innerHTML =
         '<div class="mp-login-card">' +
           '<canvas id="mp-art" aria-hidden="true"></canvas>' +
           '<h2>Million Piksel</h2>' +
-          '<p>1 000 000 piksel. Birgalikda rasm chizamiz — ' +
-          'chizish uchun kiring.</p>' +
-          '<div id="mp-gbtn"></div>' +
-          (CFG.dev_login
-            ? '<div class="mp-dev">' +
-                '<input id="mp-devname" placeholder="Ism (ixtiyoriy)" ' +
-                       'maxlength="32" autocomplete="off">' +
-                '<button id="mp-devbtn" type="button">' +
-                  'Dasturchi sifatida kirish</button>' +
-                '<span class="mp-warn">Sinov rejimi — DEV_LOGIN yoqilgan</span>' +
-              '</div>'
-            : '') +
-          '<p class="mp-login-note">Telegram ilovasida ochsangiz, kirish ' +
-          'avtomatik bo‘ladi.</p>' +
+          '<p>1 000 000 piksellik umumiy doska. Chizish uchun ilovani ' +
+          'Telegram orqali oching — kirish avtomatik bo‘ladi.</p>' +
+          (link
+            ? '<a class="mp-tg" href="' + link + '">Telegramda ochish</a>'
+            : '<span class="mp-warn">Bot hali sozlanmagan ' +
+              '(TELEGRAM_BOT_USERNAME)</span>') +
+          '<p class="mp-login-note">Doskani shu yerdan kuzatishingiz ' +
+          'mumkin, lekin piksel qo‘yish faqat Telegramda.</p>' +
         '</div>';
       document.body.appendChild(box);
 
@@ -144,67 +150,13 @@
         '.mp-login-card p{margin:0 0 18px;color:var(--muted);font-size:13px;' +
         'line-height:1.5}' +
         '.mp-login-note{margin:16px 0 0 !important;font-size:11px}' +
-        '#mp-gbtn{display:flex;justify-content:center;min-height:44px}' +
-        '.mp-dev{margin-top:16px;padding-top:16px;' +
-        'border-top:1px solid var(--line);display:grid;gap:8px}' +
-        '.mp-dev input{padding:8px 10px;border:1px solid var(--line);' +
-        'border-radius:var(--r);background:transparent;color:var(--text);' +
-        'font:inherit;text-align:center}' +
-        '.mp-dev button{padding:9px 12px;border:1px solid var(--accent);' +
-        'border-radius:var(--r);background:var(--accent);color:#fff;' +
-        'font:inherit;cursor:pointer}' +
-        '.mp-warn{font-size:10px;color:var(--muted)}';
+        '.mp-tg{display:block;padding:11px 14px;border-radius:var(--r);' +
+        'background:var(--accent);color:#fff;text-decoration:none;' +
+        'font-weight:600;font-size:14px}' +
+        '.mp-warn{display:block;font-size:11px;color:var(--muted)}';
       document.head.appendChild(css);
 
       drawLaptop(document.getElementById('mp-art'));
-
-      if (CFG.dev_login) {
-        var go = function () {
-          var nm = (document.getElementById('mp-devname').value || '').trim();
-          post('/api/auth/dev', { name: nm, ref: ref || '' })
-            .then(function (r) { box.remove(); resolve(r); },
-                  function (e) { MP.toast('Kirish xatosi'); reject(e); });
-        };
-        document.getElementById('mp-devbtn').onclick = go;
-        document.getElementById('mp-devname').onkeydown = function (e) {
-          if (e.key === 'Enter') go();
-        };
-      }
-
-      if (!CFG.google_client_id) {
-        if (CFG.dev_login) {
-          document.getElementById('mp-gbtn').innerHTML =
-            '<span style="color:var(--muted);font-size:12px">' +
-            'Google sozlanmagan</span>';
-          return;                       // dev tugmasi bor — rad etmaymiz
-        }
-        document.getElementById('mp-gbtn').innerHTML =
-          '<span style="color:var(--muted);font-size:12px">' +
-          'GOOGLE_CLIENT_ID sozlanmagan</span>';
-        return reject(new Error('GOOGLE_CLIENT_ID yo‘q'));
-      }
-
-      // Google kutubxonasi async yuklanadi — tayyor bo'lishini kutamiz
-      var tries = 0;
-      (function waitGsi() {
-        if (window.google && google.accounts && google.accounts.id) {
-          google.accounts.id.initialize({
-            client_id: CFG.google_client_id,
-            callback: function (resp) {
-              post('/api/auth/google',
-                   { id_token: resp.credential, ref: ref || '' })
-                .then(function (r) { box.remove(); resolve(r); }, reject);
-            }
-          });
-          google.accounts.id.renderButton(document.getElementById('mp-gbtn'), {
-            theme: 'outline', size: 'large', shape: 'pill',
-            text: 'signin_with', locale: 'uz'
-          });
-          return;
-        }
-        if (++tries > 100) return reject(new Error('Google yuklanmadi'));
-        setTimeout(waitGsi, 100);
-      })();
     });
   }
 

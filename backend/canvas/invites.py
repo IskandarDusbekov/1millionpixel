@@ -8,7 +8,7 @@ foydalanuvchilar ham bloklanib qolardi. Bir uyda yashovchi ikki kishi ham
 shu sababdan bonus ololmasdi.
 
 Shuning uchun himoya boshqacha:
-  1. Hisob ochish uchun Telegram yoki Google kerak (allaqachon majburiy).
+  1. Hisob ochish uchun Telegram kerak (yagona kirish yo'li).
   2. Bonus chaqirilgan odam HAQIQATAN chiza boshlagandan keyin beriladi
      (INVITE_MIN_PIXELS piksel). Soxta hisob ochib, har biriga 20 piksel
      chizib chiqish +5 energiya uchun arzimaydigan mashaqqat.

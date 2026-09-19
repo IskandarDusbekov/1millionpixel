@@ -161,15 +161,12 @@ TIMELAPSE_MAX_SEC = int(env("TIMELAPSE_MAX_SEC", 1800))     # eng sekin
 TIMELAPSE_BUSY_PIXELS = int(env("TIMELAPSE_BUSY_PIXELS", 2000))
 TIMELAPSE_KEEP_DAYS = int(env("TIMELAPSE_KEEP_DAYS", 0))    # 0 = cheksiz saqlash
 
-# DEV_LOGIN=1 — parolsiz "dasturchi sifatida kirish" tugmasi.
-# Faqat sinov uchun. Yoqilgan bo'lsa, HAR KIM hisob yarata oladi.
-# Ishlab chiqarishda 0 bo'lishi SHART.
-DEV_LOGIN = env_bool("DEV_LOGIN", False)
-
+# Kirish FAQAT Telegram Mini App orqali. Google OAuth va parolsiz
+# "dasturchi kirishi" ataylab olib tashlangan: har bir piksel Telegram
+# hisobiga bog'lanadi, ya'ni soxta hisob ochish qimmatga tushadi.
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", "")
 # Chaqiruv havolasi uchun: https://t.me/<username>/app?startapp=KOD
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", "").lstrip("@")
-GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", "")
 JWT_SECRET = env("JWT_SECRET", SECRET_KEY)
 JWT_TTL_DAYS = int(env("JWT_TTL_DAYS", 30))
 
@@ -198,12 +195,12 @@ if not DEBUG:
     SESSION_COOKIE_SAMESITE = "Lax"
     SECURE_CONTENT_TYPE_NOSNIFF = True
 
-if DEV_LOGIN:
+if not TELEGRAM_BOT_TOKEN:
     import warnings
 
     warnings.warn(
-        "DEV_LOGIN yoqilgan — saytga hech qanday tekshiruvsiz kirish mumkin. "
-        "Ishlab chiqarishda .env da DEV_LOGIN=0 qiling!",
+        "TELEGRAM_BOT_TOKEN sozlanmagan — saytga hech kim kira olmaydi. "
+        ".env ga @BotFather bergan tokenni yozing.",
         RuntimeWarning, stacklevel=1,
     )
 

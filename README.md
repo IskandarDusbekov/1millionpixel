@@ -25,7 +25,7 @@ Django + Channels + Redis + PostgreSQL, frontend esa bitta HTML fayl
 │   │   ├── redis_store.py  # kanvas 1 MB satr + atomar Lua skript
 │   │   ├── broadcaster.py  # BATCHING + pub/sub fan-out (high-load yuragi)
 │   │   ├── consumers.py    # WebSocket (issiq yo'l, DB'ga tegmaydi)
-│   │   ├── auth.py         # Telegram initData / Google OAuth / JWT
+│   │   ├── auth.py         # Telegram initData tekshiruvi / JWT
 │   │   ├── api.py          # HTTP API (Django Ninja) + /api/canvas.bin
 │   │   ├── models.py       # Player, PixelEvent, Report, ModerationLog
 │   │   ├── moderation.py   # rollback va ban
@@ -138,7 +138,7 @@ natijani pub/sub orqali hammaga tarqatadi.
 | Bayt 0 | Mazmuni |
 |---|---|
 | `0x01` | `uint16 x` `uint16 y` `uint8 color` — bo'yash |
-| `0x02` | heartbeat (20 soniyada bir) |
+| `0x02` | keepalive (20 soniyada bir; onlayn hisobiga ta'sir qilmaydi) |
 | `0x03` | `uint16 x` `uint16 y` — shikoyat |
 
 **Server → mijoz**
@@ -147,7 +147,7 @@ natijani pub/sub orqali hammaga tarqatadi.
 |---|---|
 | `0x01` | `(x, y, c)` × n — piksel paketi (80 ms batch) |
 | `0x02` | `uint32 online` `uint32 cooldown_ms` |
-| `0x03` | `uint16 energy` `uint32 next_ms` — shaxsiy |
+| `0x03` | `uint16 energy` `uint16 max` `uint32 next_ms` — shaxsiy |
 | `0x04` | utf-8 matn — toast |
 | `0x05` | snapshot'ni qayta yukla (katta rollback'dan keyin) |
 | `0x06` | `uint16 x` `uint16 y` — bo'yash rad etildi, qaytar |
@@ -278,7 +278,7 @@ ga oshadi (sukut bo'yicha +5, jami chegara +50).
 > operatorlar CGNAT ishlatadi, ya'ni bitta IP ostida minglab abonent
 > turadi — bir-birini tanimaydigan haqiqiy foydalanuvchilar ham bloklanib
 > qolardi, bir uydagi ikki kishi ham. Shuning uchun himoya boshqacha:
-> hisob ochish uchun Telegram/Google majburiy, bonus esa faqat haqiqiy
+> hisob ochish uchun Telegram majburiy, bonus esa faqat haqiqiy
 > chizishdan keyin beriladi. Soxta hisob ochib har biriga 20 piksel chizib
 > chiqish +5 energiya uchun arzimaydi.
 
@@ -411,7 +411,17 @@ Sayt `http://localhost:8000` · Panel `http://localhost:8000/admin/panel/`
 
 ## Avtorizatsiya
 
-Anonim kirish yo'q — har bir piksel aniq hisobga bog'lanadi.
+**Yagona kirish yo'li — Telegram Mini App.** Google OAuth ham, parolsiz
+"dasturchi kirishi" ham ataylab olib tashlangan: imzo bot tokeni bilan
+tekshirilgani uchun har bir piksel haqiqiy Telegram hisobiga bog'lanadi
+va soxta hisob ochish qimmatga tushadi.
+
+Oddiy brauzerda ochilganda foydalanuvchi doskani ko'radi, lekin chiza
+olmaydi — kartochka Telegram'ga havola beradi.
+
+> `TELEGRAM_BOT_TOKEN` sozlanmagan bo'lsa saytga hech kim kira olmaydi
+> (server ishga tushganda log'ga ogohlantirish yozadi). Admin panel
+> Django hisobi bilan ishlayveradi.
 
 ### Telegram Mini App
 
@@ -432,33 +442,17 @@ Ishlashi: `connect.js` `window.Telegram.WebApp.initData` ni
 (`auth.py: verify_telegram`, 24 soatdan eski initData rad etiladi) → JWT.
 Telegram ichida foydalanuvchidan hech narsa so'ralmaydi.
 
-### Dasturchi kirishi (vaqtinchalik, sinov uchun)
-
-`.env` da `DEV_LOGIN=1` bo'lsa, kirish ekranida «Dasturchi sifatida kirish»
-tugmasi paydo bo'ladi — Telegram ham, Google ham kerak emas.
-
-- Ism yozsangiz — o'sha nom bilan doimiy hisob (qayta kirsangiz o'sha hisob).
-- Ism yozmasangiz — har safar **yangi** hisob. Ikkita tabda ikki xil
-  foydalanuvchi bo'lib, real-time va energiyani sinash uchun qulay.
-
-> **⚠️ Ishlab chiqarishda `DEV_LOGIN=0` bo'lishi SHART.** Yoqilgan bo'lsa,
-> har kim cheksiz hisob ochib, energiya limitini butunlay chetlab o'tadi.
-> O'chirilganda endpoint `404` qaytaradi — ya'ni uning borligi ham bilinmaydi.
-> Server ishga tushganda yoqilgan bo'lsa, log'ga ogohlantirish yoziladi.
-
-### Google
-
-1. Google Cloud Console → APIs & Services → Credentials → **OAuth client ID**
-   → Web application.
-2. Authorized JavaScript origins: `https://sizning-domen.uz`
-3. Client ID ni `.env` dagi `GOOGLE_CLIENT_ID` ga yozing.
-
-Oddiy brauzerda ochilganda `connect.js` kirish ekranini ko'rsatadi va Google
-tugmasini chizadi. `id_token` → `POST /api/auth/google` → `google-auth`
-kutubxonasi imzoni va `aud` ni tekshiradi → JWT.
-
 JWT `localStorage` da saqlanadi va WebSocket ulanishida query parametr
 sifatida uzatiladi.
+
+### Sinovda qanday kirish
+
+Google va dasturchi kirishi olib tashlangani uchun sinovlar ham haqiqiy
+yo'ldan yuradi: `initData` sinov bot tokeni bilan imzolanadi va
+`/api/auth/telegram` ga yuboriladi. Ya'ni ishlab chiqarishdagi oqimning
+aynan o'zi tekshiriladi.
+
+`/api/auth/google` va `/api/auth/dev` endi **mavjud emas** (404).
 
 ---
 
@@ -488,7 +482,7 @@ cp .env.example .env
 | `ALLOWED_HOSTS` | `sizning-domen.uz` |
 | `CSRF_TRUSTED_ORIGINS` | `https://sizning-domen.uz` |
 | `POSTGRES_PASSWORD` | kuchli parol |
-| `TELEGRAM_BOT_TOKEN`, `GOOGLE_CLIENT_ID` | yuqoridagi bo'limga qarang |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | yuqoridagi bo'limga qarang |
 | `PUBLIC_URL` | `https://sizning-domen.uz` (bot uchun) |
 
 ### 2. TLS sertifikati
