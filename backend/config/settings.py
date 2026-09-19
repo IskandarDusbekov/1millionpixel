@@ -102,7 +102,8 @@ STATICFILES_DIRS = [BASE_DIR.parent / "frontend"]
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        # manifest_strict=False — collectstatic unutilsa sayt yiqilmaydi
+        "BACKEND": "config.storage.ForgivingManifestStaticFilesStorage"
         if not DEBUG
         else "django.contrib.staticfiles.storage.StaticFilesStorage"
     },
@@ -171,14 +172,22 @@ REAL_IP_HEADER = env("REAL_IP_HEADER", "HTTP_X_FORWARDED_FOR")
 # ---------------------------------------------------------------- xavfsizlik
 # TLS ni nginx uzadi, lekin Django buni bilishi kerak — aks holda u
 # so'rovni http deb hisoblaydi va cookie'larni himoyasiz yuboradi.
+#
+# HTTPS_ENABLED=0 — sertifikat hali olinmagan sinov bosqichi uchun.
+# Busiz DEBUG=0 rejimida sayt http so'rovni https ga yo'naltiradi va
+# cookie'lar (Secure bayrog'i tufayli) umuman yuborilmaydi — admin panelga
+# kira olmaysiz. Sertifikat olingach 1 ga qaytaring.
+HTTPS_ENABLED = env_bool("HTTPS_ENABLED", True)
+
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
-    SECURE_HSTS_SECONDS = int(env("SECURE_HSTS_SECONDS", 31536000))
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = HTTPS_ENABLED
+    SECURE_HSTS_SECONDS = (int(env("SECURE_HSTS_SECONDS", 31536000))
+                           if HTTPS_ENABLED else 0)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = HTTPS_ENABLED
+    SECURE_HSTS_PRELOAD = HTTPS_ENABLED
+    SESSION_COOKIE_SECURE = HTTPS_ENABLED
+    CSRF_COOKIE_SECURE = HTTPS_ENABLED
     SESSION_COOKIE_SAMESITE = "Lax"
     SECURE_CONTENT_TYPE_NOSNIFF = True
 

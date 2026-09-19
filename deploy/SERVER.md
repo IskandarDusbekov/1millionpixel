@@ -107,21 +107,55 @@ dig +short piksel.SIZNING-DOMEN.uz
 ## 2. Loyihani joylash
 
 ```bash
-sudo mkdir -p /opt/millionpixel
-sudo chown -R $USER:$USER /opt/millionpixel
-cd /opt/millionpixel
+apt install -y git
 ```
 
-Kodni yuklang (biri):
+### Agar repo OCHIQ (public) bo'lsa
 
 ```bash
-git clone https://github.com/SIZNING-REPO/1millionpixel.git .
+git clone https://github.com/IskandarDusbekov/1millionpixel.git /opt/millionpixel
 ```
 
-yoki kompyuteringizdan (Windows PowerShell'da, loyiha papkasida):
+### Agar repo YOPIQ (private) bo'lsa — deploy key
+
+Serverda kalit yarating (parol so'raganda Enter bosing):
 
 ```bash
-scp -r backend frontend deploy Dockerfile docker-compose.yml .env.example root@SERVER_IP:/opt/millionpixel/
+ssh-keygen -t ed25519 -C "millionpixel-server" -f ~/.ssh/millionpixel -N ""
+```
+
+Ochiq kalitni ko'ring va nusxalang:
+
+```bash
+cat ~/.ssh/millionpixel.pub
+```
+
+GitHub'da: repo → **Settings** → **Deploy keys** → **Add deploy key** →
+nomi `server`, kalitni joylashtiring, "Allow write access" **belgilamang**
+(serverga faqat o'qish kerak).
+
+SSH sozlamasi:
+
+```bash
+printf 'Host github-mp\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/millionpixel\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+```
+
+Tekshiring (`successfully authenticated` chiqishi kerak):
+
+```bash
+ssh -T git@github-mp
+```
+
+Klonlang:
+
+```bash
+git clone github-mp:IskandarDusbekov/1millionpixel.git /opt/millionpixel
+```
+
+### Keyin ikkala holatda ham
+
+```bash
+cd /opt/millionpixel && ls
 ```
 
 Sozlamalar faylini yarating:
@@ -386,11 +420,15 @@ Qayta ishga tushirish:
 cd /opt/millionpixel && docker compose restart web
 ```
 
-Kodni yangilash:
+Kodni yangilash (kompyuterda `git push` qilgandan keyin):
 
 ```bash
 cd /opt/millionpixel && git pull && docker compose up -d --build && docker compose exec web python manage.py migrate
 ```
+
+> `.env` git'da yo'q, shuning uchun `git pull` uni hech qachon
+> almashtirmaydi. Yangi sozlama qo'shilsa, `.env.example` dan ko'chirib
+> qo'shasiz.
 
 To'xtatish:
 

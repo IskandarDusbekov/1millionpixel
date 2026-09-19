@@ -13,6 +13,20 @@ from canvas.api import api, canvas_bin
 FRONTEND = settings.BASE_DIR.parent / "frontend" / "index.html"
 
 
+def _asset(name: str) -> str:
+    """Statik faylning manzili, hash bilan.
+
+    `collectstatic` qilinmagan bo'lsa `static()` ValueError tashlaydi va
+    butun sayt 500 beradi. Bezak skript uchun bu juda qimmat narx —
+    shuning uchun hash'siz manzilga tushib qolamiz. Sayt ishlaydi,
+    faqat brauzer keshini yangilash uzoqroq davom etadi.
+    """
+    try:
+        return static(name)
+    except ValueError:
+        return settings.STATIC_URL + name
+
+
 @lru_cache(maxsize=1)
 def _page() -> str:
     """frontend/index.html'ni o'zgartirmasdan ishlatamiz.
@@ -39,8 +53,8 @@ def _page() -> str:
         '<script src="https://accounts.google.com/gsi/client" async defer></script>\n'
         # static() — ManifestStaticFilesStorage nomga hash qo'shadi,
         # shuning uchun yo'lni qo'lda yozib bo'lmaydi.
-        f'<script src="{static("onboarding.js")}"></script>\n'
-        f'<script src="{static("connect.js")}"></script>\n</body>',
+        f'<script src="{_asset("onboarding.js")}"></script>\n'
+        f'<script src="{_asset("connect.js")}"></script>\n</body>',
     )
     return html
 
