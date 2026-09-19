@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Muharrir / IDE sozlamalari — repozitoriyga tushmasin
+.claude/
+.vscode/
+.idea/
+
+# Million Piksel
+millionpixel.zip
+backend/media/
+backend/dev.sqlite3
+backend/dev.sqlite3-*
+backend/staticfiles/
+backend/.venv/

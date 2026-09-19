@@ -1,0 +1,51 @@
+# Faqat serverda NGINX YO'Q bo'lsa ishlating.
+#
+# Sizda allaqachon nginx bor (boshqa saytlar uchun) — bu faylni
+# ISHLATMANG, 80/443 portlari to'qnashadi. O'rniga deploy/SERVER.md
+# dagi "mavjud nginx" yo'riqnomasiga qarang.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  web:
+    ports: []                      # tashqariga chiqmaydi, faqat nginx orqali
+    volumes:
+      - static:/app/staticfiles
+      - ./media:/app/media
+
+  bot:
+    build: .
+    command: python manage.py telegram_bot --url ${PUBLIC_URL}
+    env_file: [.env]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_HOST: postgres
+    depends_on: [redis, postgres]
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static:/app/staticfiles:ro
+      - ./media:/app/media:ro
+      - certbot-www:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    depends_on: [web]
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot-www:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    # har 12 soatda sertifikatni yangilashga urinadi
+    entrypoint: >
+      sh -c "trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!}; done"
+
+volumes:
+  static:
+  certbot-www:
+  certbot-conf:

@@ -1,0 +1,102 @@
+{% extends "admin/index.html" %}
+
+{# Nomi "admin/index.html" BO'LMASLIGI kerak — aks holda o'zini extends qilib
+   rekursiyaga tushadi. admin.site.index_template shu faylga ishora qiladi.
+   Raqamlar /admin/panel/api/stats dan olinadi — Python tomonda qo'shimcha
+   view yozish shart emas. #}
+
+{% block content %}
+<style>
+  .mp-dash{margin-bottom:22px}
+  .mp-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin:14px 0}
+  .mp-card{border:1px solid var(--hairline-color,#e0e0e0);border-radius:8px;padding:10px 12px;background:var(--darkened-bg,#fafafa)}
+  .mp-card b{display:block;font-size:20px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .mp-card span{font-size:11px;color:var(--body-quiet-color,#666);text-transform:uppercase;letter-spacing:.3px}
+  .mp-bar{height:8px;border-radius:4px;background:var(--hairline-color,#e0e0e0);overflow:hidden;margin-top:6px}
+  .mp-bar i{display:block;height:100%;background:#1E7F86}
+  .mp-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .mp-actions a{display:inline-block;padding:8px 14px;border-radius:6px;
+     background:#1E7F86;color:#fff;text-decoration:none;font-weight:500}
+  .mp-actions a.alt{background:transparent;color:inherit;
+     border:1px solid var(--hairline-color,#ccc)}
+  .mp-off{color:#B3261E;font-weight:600}
+</style>
+
+<div class="module mp-dash" style="padding:16px">
+  <h2 style="margin-top:0">Million Piksel — umumiy holat</h2>
+
+  <div class="mp-grid" id="mpGrid">
+    <div class="mp-card"><b id="d_online">—</b><span>onlayn</span></div>
+    <div class="mp-card"><b id="d_cd">—</b><span>kullaut</span></div>
+    <div class="mp-card"><b id="d_fill">—</b><span>doska to'lgan</span></div>
+    <div class="mp-card"><b id="d_px1h">—</b><span>piksel / 1 soat</span></div>
+    <div class="mp-card"><b id="d_px24">—</b><span>piksel / 24 soat</span></div>
+    <div class="mp-card"><b id="d_players">—</b><span>foydalanuvchi</span></div>
+    <div class="mp-card"><b id="d_new">—</b><span>yangi / 24 soat</span></div>
+    <div class="mp-card"><b id="d_active">—</b><span>faol / 24 soat</span></div>
+    <div class="mp-card"><b id="d_teams">—</b><span>jamoa</span></div>
+    <div class="mp-card"><b id="d_inv">—</b><span>chaqiruv bilan kelgan</span></div>
+    <div class="mp-card"><b id="d_rep">—</b><span>yangi shikoyat</span></div>
+    <div class="mp-card"><b id="d_ban">—</b><span>bloklangan</span></div>
+  </div>
+
+  <div>
+    <div style="display:flex;justify-content:space-between;font-size:12px">
+      <span>Doska to'lishi</span>
+      <span id="d_fill2" style="font-variant-numeric:tabular-nums">—</span>
+    </div>
+    <div class="mp-bar"><i id="d_fillbar" style="width:0%"></i></div>
+  </div>
+
+  <p style="margin:12px 0 0;font-size:12px" id="d_tl">Timelapse: —</p>
+
+  <div class="mp-actions">
+    <a href="{% url 'mp-panel' %}">Moderatsiya paneli</a>
+    <a class="alt" href="{% url 'admin:canvas_snapshot_changelist' %}">Suratlar</a>
+    <a class="alt" href="{% url 'admin:canvas_report_changelist' %}">Shikoyatlar</a>
+    <a class="alt" href="{% url 'admin:canvas_team_changelist' %}">Jamoalar</a>
+    <a class="alt" href="/" target="_blank">Saytni ochish</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  function num(n){ return Number(n).toLocaleString('uz'); }
+  function load(){
+    fetch('/admin/panel/api/stats', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(s){
+        document.getElementById('d_online').textContent  = num(s.online);
+        document.getElementById('d_cd').textContent      = s.cooldown_sec + ' s';
+        document.getElementById('d_fill').textContent    = s.fill_percent + '%';
+        document.getElementById('d_px1h').textContent    = num(s.events_1h);
+        document.getElementById('d_px24').textContent    = num(s.events_24h);
+        document.getElementById('d_players').textContent = num(s.players);
+        document.getElementById('d_new').textContent     = num(s.new_players_24h);
+        document.getElementById('d_active').textContent  = num(s.players_24h);
+        document.getElementById('d_teams').textContent   = num(s.teams);
+        document.getElementById('d_inv').textContent     = num(s.invites);
+        document.getElementById('d_rep').textContent     = num(s.reports_new);
+        document.getElementById('d_ban').textContent     = num(s.banned);
+
+        document.getElementById('d_fill2').textContent =
+          num(s.painted) + ' / 1 000 000  (' + s.fill_percent + '%)';
+        document.getElementById('d_fillbar').style.width =
+          Math.min(100, s.fill_percent) + '%';
+
+        document.getElementById('d_tl').innerHTML = s.timelapse_on
+          ? 'Timelapse: <b>yoqilgan</b> — suratlar avtomatik olinmoqda.'
+          : 'Timelapse: <span class="mp-off">TO‘XTATILGAN</span>';
+      })
+      .catch(function(){
+        document.getElementById('d_tl').textContent =
+          'Statistika yuklanmadi (server ishlayaptimi?)';
+      });
+  }
+  load();
+  setInterval(load, 10000);
+})();
+</script>
+
+{{ block.super }}
+{% endblock %}

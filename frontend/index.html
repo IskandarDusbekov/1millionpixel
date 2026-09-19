@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Million Piksel</title>
+<style>
+:root{
+  --bg:#EFE7D6;
+  --panel:#FFFAF0;
+  --text:#1B2340;
+  --muted:#6B6480;
+  --line:#DBCBAE;
+  --accent:#1E7F86;
+  --grid:rgba(0,0,0,.12);
+  --toast-bg:#1B2340;
+  --toast-fg:#FFFAF0;
+  --r:8px;
+  --rp:12px;
+  --topH:52px;
+  --bottomH:120px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#11152A;
+    --panel:#1B2140;
+    --text:#EFE7D6;
+    --muted:#9A93AE;
+    --line:#2E3660;
+    --accent:#49B6BD;
+    --grid:rgba(0,0,0,.12);
+    --toast-bg:#070A16;
+    --toast-fg:#EFE7D6;
+  }
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:14px;
+  -webkit-user-select:none;user-select:none;
+}
+button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---------- 1. Yuqori panel ---------- */
+.top{
+  position:fixed;inset:0 0 auto 0;z-index:30;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+  padding-top:env(safe-area-inset-top);
+}
+.topbar{
+  display:flex;align-items:center;gap:10px;
+  height:52px;padding:0 12px;
+}
+.brand{font-weight:700;font-size:16px;letter-spacing:-.2px;white-space:nowrap}
+.online{
+  display:flex;align-items:center;gap:6px;
+  color:var(--muted);font-size:12px;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#02BE01;flex:none;
+  animation:pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+.energy{
+  margin-left:auto;font-size:12px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.energy b{color:var(--text);font-weight:600}
+.ebar{height:3px;background:var(--line)}
+.ebar > i{
+  display:block;height:100%;width:100%;
+  background:var(--accent);
+  transition:width .18s linear;
+}
+@media (prefers-reduced-motion:reduce){.ebar > i{transition:none}}
+
+/* ---------- 2. Kanvas ---------- */
+#board{
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  display:block;
+  touch-action:none;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  cursor:crosshair;
+}
+
+/* ---------- 4. Suzuvchi koordinata paneli ---------- */
+.floating{
+  position:fixed;z-index:25;
+  left:50%;transform:translateX(-50%);
+  bottom:calc(var(--bottomH) + 8px);
+  display:flex;align-items:center;gap:8px;
+  padding:5px 5px 5px 12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--rp);
+}
+.floating .coord{
+  font-size:13px;font-weight:600;
+  font-variant-numeric:tabular-nums;
+  min-width:72px;text-align:center;
+}
+.floating .coord[data-empty="1"]{color:var(--muted);font-weight:400}
+.floating button{
+  background:transparent;
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  padding:5px 10px;font-size:12px;color:var(--muted);
+  cursor:pointer;
+}
+.floating button:active{background:var(--bg)}
+
+/* ---------- 3. Pastki panel ---------- */
+.bottom{
+  position:fixed;inset:auto 0 0 0;z-index:30;
+  background:var(--panel);
+  border-top:1px solid var(--line);
+  display:grid;gap:8px;
+  padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+}
+.palette{
+  display:flex;flex-wrap:wrap;gap:6px;
+  justify-content:center;align-items:center;
+}
+.sw{
+  width:24px;height:24px;border-radius:5px;
+  border:1px solid var(--line);
+  padding:0;cursor:pointer;flex:none;
+  transition:transform .12s ease;
+}
+.sw[aria-pressed="true"]{
+  box-shadow:0 0 0 2px var(--text);
+  transform:scale(1.15);
+}
+@media (prefers-reduced-motion:reduce){.sw{transition:none}}
+
+.tools{display:flex;gap:8px}
+.tools button{
+  flex:1;height:38px;
+  background:transparent;
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  font-size:14px;font-weight:500;
+  cursor:pointer;
+}
+.tools button:active{background:var(--bg)}
+
+.credit{
+  text-align:center;font-size:10px;color:var(--muted);
+  line-height:1.4;
+}
+.credit a{color:var(--muted)}
+
+/* ---------- 6. Toast ---------- */
+.toast{
+  position:fixed;z-index:60;
+  top:calc(var(--topH) + 12px);
+  left:50%;transform:translateX(-50%);
+  max-width:calc(100vw - 32px);
+  background:var(--toast-bg);color:var(--toast-fg);
+  padding:9px 14px;border-radius:var(--rp);
+  font-size:13px;white-space:nowrap;
+  opacity:0;pointer-events:none;
+  transition:opacity .16s ease;
+}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+.sr{
+  position:absolute;width:1px;height:1px;
+  padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0 0 0 0);white-space:nowrap;border:0;
+}
+
+@media (max-width:359px){
+  .sw{width:22px;height:22px}
+  .brand{font-size:15px}
+}
+</style>
+</head>
+<body>
+
+<canvas id="board" tabindex="0" aria-label="Umumiy kanvas, 1000 ga 1000 piksel. Surish uchun strelka tugmalari."></canvas>
+
+<div class="top">
+  <div class="topbar">
+    <div class="brand">Million Piksel</div>
+    <div class="online"><span class="dot" aria-hidden="true"></span><span id="onlineTxt">0 onlayn</span></div>
+    <div class="energy" id="energyTxt" aria-live="off"><b>50/50</b> · to‘liq</div>
+  </div>
+  <div class="ebar" role="progressbar" aria-label="Energiya" aria-valuemin="0" aria-valuemax="50" aria-valuenow="50">
+    <i id="ebarFill"></i>
+  </div>
+</div>
+
+<div class="floating">
+  <span class="coord" id="coordTxt" data-empty="1" aria-live="polite">—</span>
+  <button id="friendsBtn" aria-label="Do‘stlarni chaqirish va jamoa">Do‘stlar</button>
+  <button id="reportBtn" aria-label="Ushbu koordinata haqida shikoyat qilish">Shikoyat</button>
+</div>
+
+<footer class="bottom">
+  <div class="palette" id="palette" role="group" aria-label="Rang tanlash"></div>
+  <div class="tools">
+    <button id="fitBtn" aria-label="Butun doskani ko‘rsatish">Butun doska</button>
+    <button id="zinBtn" aria-label="Yaqinlashtirish">+</button>
+    <button id="zoutBtn" aria-label="Uzoqlashtirish">−</button>
+  </div>
+  <div class="credit">Powered by Million Piksel · <a href="https://t.me/" target="_blank" rel="noopener">Telegram kanal</a></div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sr" id="srLog" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   KONFIGURATSIYA
+   ================================================================ */
+const N          = 1000;          // doska o‘lchami (N x N)
+let   MAX_E      = 50;            // maksimal energiya (server o‘zgartirishi mumkin:
+                                  // do‘st chaqirgan foydalanuvchida kattaroq)
+const MAX_SCALE  = 36;            // 1 piksel ~36 ekran pikseli
+const DRAG_SLOP  = 6;             // 6px dan ko‘p sursa — bo‘yash emas, surish
+const GRID_FROM  = 8;             // shu zoomdan boshlab to‘r chiziladi
+const DEMO       = true;          // demo rasm (backend ulanganda false qiling)
+
+// Agar 0 dan katta qilsangiz: shu zoomdan uzoqda bosish bo‘yamaydi,
+// balki o‘sha nuqtani yaqinlashtiradi (mobil uchun xatoni kamaytiradi).
+const TAP_ZOOM_BELOW = 0;
+
+const PALETTE = [
+  '#FFFFFF','#E4E4E4','#888888','#444444','#111111','#FFA7D1',
+  '#E50000','#E59500','#A06A42','#E5D900','#94E044','#02BE01',
+  '#00D3DD','#0083C7','#0000EA','#CF6EE4','#820080','#FF7F7F',
+  '#FFB470','#FFFF80','#7FFF8E','#7FE5F0','#7F9EFF','#C77FFF'
+];
+const EMPTY = 255;                // bo‘yalmagan piksel
+const WHITE = [255,255,255];
+
+const RGB = PALETTE.map(h => [
+  parseInt(h.slice(1,3),16),
+  parseInt(h.slice(3,5),16),
+  parseInt(h.slice(5,7),16)
+]);
+
+/* ================================================================
+   HOLAT
+   ================================================================ */
+const state = new Uint8Array(N * N).fill(EMPTY);   // 1 MB — butun doska
+
+let color   = 6;          // tanlangan rang (#E50000)
+let online  = 7;          // onlayn foydalanuvchilar
+let eBase   = MAX_E;      // oxirgi bo‘yashdagi energiya
+let eAt     = Date.now(); // oxirgi bo‘yash vaqti
+let lastCell = null;      // oxirgi bosilgan katak
+
+/* --- ko‘rish oynasi: ekran = ox + board * scale --- */
+let scale = 1, ox = 0, oy = 0;
+let W = 0, H = 0, dpr = 1, topH = 52, bottomH = 120;
+let dirty = true;
+
+/* ================================================================
+   OFFSCREEN KANVAS  (butun doska bitta rasm sifatida)
+   ================================================================ */
+const off  = document.createElement('canvas');
+off.width = off.height = N;
+const octx = off.getContext('2d', { alpha:false });
+octx.fillStyle = '#FFFFFF';
+octx.fillRect(0, 0, N, N);
+
+const board = document.getElementById('board');
+const ctx   = board.getContext('2d', { alpha:false });
+
+/** Bitta piksel — offscreen'ga. O(1). */
+function blit(x, y, v){
+  octx.fillStyle = (v === EMPTY) ? '#FFFFFF' : PALETTE[v];
+  octx.fillRect(x, y, 1, 1);
+}
+
+/** Butun doskani qayta chizish — faqat snapshot yuklanganda. */
+function blitAll(){
+  const img = octx.createImageData(N, N);
+  const d = img.data;
+  for (let i = 0, p = 0; i < N*N; i++, p += 4){
+    const v = state[i];
+    const c = (v === EMPTY || v >= RGB.length) ? WHITE : RGB[v];
+    d[p] = c[0]; d[p+1] = c[1]; d[p+2] = c[2]; d[p+3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  dirty = true;
+}
+
+/* ================================================================
+   MASSHTAB VA SURISH  —  ikkitasi ALOHIDA funksiyada.
+   (Aralashtirilsa, zoom paytida rasm siljib ketadi.)
+   ================================================================ */
+function viewH(){ return Math.max(60, H - topH - bottomH); }
+
+function minScale(){
+  return Math.min(W / N, viewH() / N) * 0.96;
+}
+
+/** 1) Faqat masshtabni cheklaydi. */
+function clampScale(s){
+  return Math.max(minScale(), Math.min(MAX_SCALE, s));
+}
+
+/** 2) Faqat surishni cheklaydi. Doska oynadan kichik bo‘lsa — markazda. */
+function clampPan(){
+  const vw = W, vh = viewH(), b = N * scale;
+  ox = (b <= vw) ? (vw - b) / 2 : Math.min(0, Math.max(vw - b, ox));
+  oy = (b <= vh) ? topH + (vh - b) / 2
+                 : Math.min(topH, Math.max(topH + vh - b, oy));
+}
+
+/**
+ * Nuqtaga bog‘langan zoom.
+ * Tartib muhim: global koordinata → masshtabni cheklash → ox/oy qayta hisoblash.
+ * Shunda (sx,sy) ostidagi katak aynan o‘sha joyda qoladi.
+ */
+function zoomAt(sx, sy, next){
+  viewMode = 'free';
+  const bx = (sx - ox) / scale;
+  const by = (sy - oy) / scale;
+  scale = clampScale(next);
+  ox = sx - bx * scale;
+  oy = sy - by * scale;
+  clampPan();
+  dirty = true;
+}
+
+/** Katakni oynaning markazida ushlab turib zoom qilish. */
+function centerOn(bx, by, next){
+  viewMode = 'free';
+  const cx = W / 2, cy = topH + viewH() / 2;
+  scale = clampScale(next);
+  ox = cx - (bx + 0.5) * scale;
+  oy = cy - (by + 0.5) * scale;
+  clampPan();
+  dirty = true;
+}
+
+/* Ko'rinish rejimi. Muhim: sahifa yuklanganda yoki ekran burilganda
+   layout keyinroq o'zgaradi, shuning uchun resize() tanlangan rejimni
+   QAYTA qo'llaydi. Aks holda "butun doska" yoki "qoplash" holati
+   birinchi resize'da yo'qolib ketadi. */
+let viewMode = 'fit';          // 'fit' | 'cover' | 'free'
+
+function applyCover(){
+  // Aynan qoplaydigan masshtab: ekran to'la, lekin doskaning imkon
+  // qadar ko'p qismi ko'rinadi (kattaroq koeffitsient rasmni kesib tashlaydi).
+  scale = clampScale(Math.max(W / N, viewH() / N));
+  ox = W / 2 - (N / 2) * scale;
+  oy = topH + viewH() / 2 - (N / 2) * scale;
+}
+
+function fitAll(){
+  viewMode = 'fit';
+  scale = minScale();
+  clampPan();
+  dirty = true;
+}
+
+function coverAll(){
+  viewMode = 'cover';
+  applyCover();
+  clampPan();
+  dirty = true;
+}
+
+function toBoard(sx, sy){
+  return {
+    x: Math.floor((sx - ox) / scale),
+    y: Math.floor((sy - oy) / scale)
+  };
+}
+
+/** Oyna markazidagi katak — lastCell bo‘lmaganda ishlatiladi. */
+function centerCell(){
+  const c = toBoard(W / 2, topH + viewH() / 2);
+  return { x: Math.min(N-1, Math.max(0, c.x)), y: Math.min(N-1, Math.max(0, c.y)) };
+}
+
+/* ================================================================
+   RENDER  —  har kadrga bitta drawImage
+   ================================================================ */
+let theme = { bg:'#EFE7D6', line:'#DBCBAE', grid:'rgba(0,0,0,.12)', accent:'#1E7F86' };
+function readTheme(){
+  const cs = getComputedStyle(document.documentElement);
+  theme = {
+    bg:     cs.getPropertyValue('--bg').trim(),
+    line:   cs.getPropertyValue('--line').trim(),
+    grid:   cs.getPropertyValue('--grid').trim(),
+    accent: cs.getPropertyValue('--accent').trim()
+  };
+  dirty = true;
+}
+
+let hover = null;   // {x,y} — faqat sichqoncha uchun
+
+function render(){
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // qurilma piksellariga tekislash — chekkalar xira bo‘lmasin
+  const x = Math.round(ox * dpr) / dpr;
+  const y = Math.round(oy * dpr) / dpr;
+  const s = N * scale;
+
+  ctx.drawImage(off, 0, 0, N, N, x, y, s, s);   // <- butun doska, 1 ta chaqiruv
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = theme.line;
+  ctx.strokeRect(x - .5, y - .5, s + 1, s + 1);
+
+  if (scale > GRID_FROM) drawGrid(x, y, s);
+
+  if (hover && scale >= GRID_FROM){
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = theme.accent;
+    ctx.strokeRect(x + hover.x * scale - 1, y + hover.y * scale - 1, scale + 2, scale + 2);
+  }
+}
+
+function drawGrid(x, y, s){
+  const top = topH, bot = H - bottomH;
+  const i0 = Math.max(0, Math.floor((0 - x) / scale));
+  const i1 = Math.min(N, Math.ceil((W - x) / scale));
+  const j0 = Math.max(0, Math.floor((top - y) / scale));
+  const j1 = Math.min(N, Math.ceil((bot - y) / scale));
+
+  ctx.beginPath();
+  for (let i = i0; i <= i1; i++){
+    const px = Math.round((x + i * scale) * dpr) / dpr + .5 / dpr;
+    ctx.moveTo(px, Math.max(top, y));
+    ctx.lineTo(px, Math.min(bot, y + s));
+  }
+  for (let j = j0; j <= j1; j++){
+    const py = Math.round((y + j * scale) * dpr) / dpr + .5 / dpr;
+    ctx.moveTo(Math.max(0, x), py);
+    ctx.lineTo(Math.min(W, x + s), py);
+  }
+  ctx.lineWidth = 1 / dpr;
+  ctx.strokeStyle = theme.grid;
+  ctx.stroke();
+}
+
+(function loop(){
+  if (dirty){ dirty = false; render(); }
+  requestAnimationFrame(loop);
+})();
+
+/* ================================================================
+   ENERGIYA  —  saqlanmaydi, oxirgi bo‘yash vaqtidan hisoblanadi
+   ================================================================ */
+function cooldownMs(){
+  if (online < 10)   return 1000;
+  if (online < 100)  return 10000;
+  if (online < 1000) return 30000;
+  return 60000;
+}
+
+function energyNow(){
+  if (eBase >= MAX_E) return { e: MAX_E, next: 0 };
+  const cd = cooldownMs();
+  const elapsed = Date.now() - eAt;
+  const e = Math.min(MAX_E, eBase + Math.floor(elapsed / cd));
+  if (e >= MAX_E) return { e: MAX_E, next: 0 };
+  return { e, next: cd - (elapsed % cd) };
+}
+
+function spendOne(){
+  const cd = cooldownMs();
+  const elapsed = Date.now() - eAt;
+  const gained = Math.min(MAX_E - eBase, Math.floor(elapsed / cd));
+  if (eBase + gained >= MAX_E){ eBase = MAX_E; eAt = Date.now(); }
+  else { eBase += gained; eAt += gained * cd; }   // yarim yig‘ilgan vaqt yo‘qolmaydi
+  eBase -= 1;
+}
+
+const energyTxt = document.getElementById('energyTxt');
+const ebarFill  = document.getElementById('ebarFill');
+const ebarEl    = ebarFill.parentElement;
+
+function paintEnergyUI(){
+  const { e, next } = energyNow();
+  energyTxt.innerHTML = (e >= MAX_E)
+    ? '<b>' + e + '/' + MAX_E + '</b> · to‘liq'
+    : '<b>' + e + '/' + MAX_E + '</b> · +1 piksel ' + Math.ceil(next / 1000) + ' s';
+  ebarFill.style.width = (e / MAX_E * 100) + '%';
+  ebarEl.setAttribute('aria-valuenow', e);
+  ebarEl.setAttribute('aria-valuemax', MAX_E);
+}
+setInterval(paintEnergyUI, 200);
+
+/* ================================================================
+   BO‘YASH
+   ================================================================ */
+function setPixel(x, y, v){
+  if (x < 0 || y < 0 || x >= N || y >= N) return;
+  state[y * N + x] = v;
+  blit(x, y, v);
+  dirty = true;
+}
+
+function paint(x, y){
+  if (x < 0 || y < 0 || x >= N || y >= N) return;
+
+  if (energyNow().e < 1){
+    toast('Energiya tugadi, biroz kuting');
+    return;
+  }
+  spendOne();
+  paintEnergyUI();
+
+  const prev = state[y * N + x];      // server rad etsa — shu qiymatga qaytariladi
+  setPixel(x, y, color);
+  lastCell = { x, y };
+  showCoord(x, y);
+
+  if (window.MP.onPaint) window.MP.onPaint(x, y, color, prev);   // -> WebSocket
+}
+
+const coordTxt = document.getElementById('coordTxt');
+function showCoord(x, y){
+  coordTxt.textContent = x + ', ' + y;
+  coordTxt.dataset.empty = '0';
+}
+
+/* ================================================================
+   POINTER EVENTS  —  sichqoncha va barmoq bitta kod bilan
+   ================================================================ */
+const pts = new Map();
+let moved = false, pinch = null, lastTap = 0, lastTapPos = null;
+
+function pinchState(){
+  const it = pts.values();
+  const a = it.next().value, b = it.next().value;
+  return {
+    d:  Math.hypot(a.x - b.x, a.y - b.y) || 1,
+    mx: (a.x + b.x) / 2,
+    my: (a.y + b.y) / 2
+  };
+}
+
+board.addEventListener('pointerdown', e => {
+  board.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY });
+  if (pts.size === 1) moved = false;
+  else if (pts.size === 2){ pinch = pinchState(); moved = true; }
+});
+
+board.addEventListener('pointermove', e => {
+  const p = pts.get(e.pointerId);
+
+  if (!p){                                   // bosilmagan sichqoncha — hover
+    if (e.pointerType === 'mouse'){
+      const b = toBoard(e.clientX, e.clientY);
+      const inside = b.x >= 0 && b.y >= 0 && b.x < N && b.y < N;
+      const nh = inside ? b : null;
+      if (!!nh !== !!hover || (nh && hover && (nh.x !== hover.x || nh.y !== hover.y))){
+        hover = nh; dirty = true;
+      }
+    }
+    return;
+  }
+
+  const px = p.x, py = p.y;
+  p.x = e.clientX; p.y = e.clientY;
+
+  if (pts.size === 1){
+    if (!moved && Math.hypot(p.x - p.sx, p.y - p.sy) > DRAG_SLOP) moved = true;
+    if (moved){
+      viewMode = 'free';
+      ox += p.x - px; oy += p.y - py; clampPan(); dirty = true;
+    }
+  } else if (pts.size === 2 && pinch){
+    const cur = pinchState();
+    zoomAt(cur.mx, cur.my, scale * (cur.d / pinch.d));   // ikki barmoq o‘rtasi qimirlamaydi
+    ox += cur.mx - pinch.mx;                             // keyin surish
+    oy += cur.my - pinch.my;
+    clampPan();
+    pinch = cur;
+    dirty = true;
+  }
+});
+
+function endPointer(e){
+  const p = pts.get(e.pointerId);
+  pts.delete(e.pointerId);
+  if (pts.size < 2) pinch = null;
+
+  if (pts.size === 1){            // 2 barmoqdan 1 taga — sakrashni oldini olish
+    const r = pts.values().next().value;
+    r.sx = r.x; r.sy = r.y;
+    moved = true;
+    return;
+  }
+  if (pts.size === 0 && p){
+    if (!moved) handleTap(p.x, p.y);
+    moved = false;
+  }
+}
+board.addEventListener('pointerup', endPointer);
+board.addEventListener('pointercancel', endPointer);
+board.addEventListener('pointerleave', () => { if (hover){ hover = null; dirty = true; } });
+
+function handleTap(sx, sy){
+  const now = Date.now();
+  const dbl = (now - lastTap < 300) && lastTapPos &&
+              Math.hypot(sx - lastTapPos[0], sy - lastTapPos[1]) < 24;
+  const b = toBoard(sx, sy);
+
+  if (dbl){                       // ikkinchi bosish bo‘yamaydi — yaqinlashtiradi
+    lastTap = 0;
+    centerOn(
+      Math.min(N-1, Math.max(0, b.x)),
+      Math.min(N-1, Math.max(0, b.y)),
+      scale * 2.5
+    );
+    return;
+  }
+  lastTap = now; lastTapPos = [sx, sy];
+
+  if (TAP_ZOOM_BELOW && scale < TAP_ZOOM_BELOW){
+    centerOn(Math.min(N-1, Math.max(0, b.x)), Math.min(N-1, Math.max(0, b.y)), TAP_ZOOM_BELOW * 2);
+    return;
+  }
+  paint(b.x, b.y);                // bosish = darhol bo‘yash
+}
+
+board.addEventListener('wheel', e => {
+  e.preventDefault();
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;          // satr rejimi
+  else if (e.deltaMode === 2) dy *= H;      // sahifa rejimi
+  zoomAt(e.clientX, e.clientY, scale * Math.exp(-dy * 0.0015));
+}, { passive:false });
+
+board.addEventListener('contextmenu', e => e.preventDefault());
+
+/* --- klaviatura: strelka bilan surish --- */
+addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  const step = e.shiftKey ? 160 : 40;
+  let dx = 0, dy = 0;
+  if (e.key === 'ArrowLeft')  dx =  step;
+  else if (e.key === 'ArrowRight') dx = -step;
+  else if (e.key === 'ArrowUp')    dy =  step;
+  else if (e.key === 'ArrowDown')  dy = -step;
+  else return;
+  e.preventDefault();
+  viewMode = 'free';
+  ox += dx; oy += dy; clampPan(); dirty = true;
+});
+
+/* ================================================================
+   UI
+   ================================================================ */
+const paletteEl = document.getElementById('palette');
+PALETTE.forEach((hex, i) => {
+  const b = document.createElement('button');
+  b.className = 'sw';
+  b.style.background = hex;
+  b.type = 'button';
+  b.setAttribute('aria-label', 'Rang ' + hex);
+  b.setAttribute('aria-pressed', String(i === color));
+  b.addEventListener('click', () => {
+    color = i;
+    paletteEl.querySelectorAll('.sw').forEach((s, k) =>
+      s.setAttribute('aria-pressed', String(k === i)));
+    dirty = true;
+  });
+  paletteEl.appendChild(b);
+});
+
+document.getElementById('fitBtn').addEventListener('click', fitAll);
+document.getElementById('zinBtn').addEventListener('click', () => {
+  const c = lastCell || centerCell();
+  centerOn(c.x, c.y, scale * 2);
+});
+document.getElementById('zoutBtn').addEventListener('click', () => {
+  const c = lastCell || centerCell();
+  centerOn(c.x, c.y, scale / 2);
+});
+document.getElementById('friendsBtn').addEventListener('click', () => {
+  if (window.MP.onFriends) window.MP.onFriends();
+  else toast('Bu funksiya server bilan ishlaydi');
+});
+document.getElementById('reportBtn').addEventListener('click', () => {
+  if (!lastCell){ toast('Avval biror nuqtani bosing'); return; }
+  toast('Shikoyat yuborildi: ' + lastCell.x + ', ' + lastCell.y);
+  if (window.MP.onReport) window.MP.onReport(lastCell.x, lastCell.y);
+});
+
+/* --- toast --- */
+const toastEl = document.getElementById('toast');
+let toastT = 0;
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => toastEl.classList.remove('on'), 2000);
+}
+
+const onlineTxt = document.getElementById('onlineTxt');
+function paintOnlineUI(){
+  onlineTxt.textContent = online + ' onlayn';
+}
+
+/* ================================================================
+   O‘LCHAMLAR
+   ================================================================ */
+function measure(){
+  const t = document.querySelector('.top').getBoundingClientRect().height;
+  const b = document.querySelector('.bottom').getBoundingClientRect().height;
+  topH = Math.round(t); bottomH = Math.round(b);
+  document.documentElement.style.setProperty('--topH', topH + 'px');
+  document.documentElement.style.setProperty('--bottomH', bottomH + 'px');
+}
+
+function resize(){
+  measure();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = board.clientWidth; H = board.clientHeight;
+  board.width  = Math.round(W * dpr);
+  board.height = Math.round(H * dpr);
+
+  if (viewMode === 'fit')        scale = minScale();
+  else if (viewMode === 'cover') applyCover();
+  else                           scale = clampScale(scale);
+
+  clampPan();
+  dirty = true;
+}
+addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 120));
+new ResizeObserver(resize).observe(document.querySelector('.bottom'));
+
+const mq = matchMedia('(prefers-color-scheme: dark)');
+(mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(readTheme);
+
+/* ================================================================
+   BACKEND UCHUN OCHIQ API
+   ================================================================ */
+window.MP = {
+  /** Boshqa foydalanuvchi qo‘ygan piksel (WebSocket'dan). */
+  remotePixel(x, y, v){ setPixel(x, y, v); },
+
+  /** Bir nechta piksel — bitta kadrda (batch). */
+  remoteBatch(list){
+    for (let i = 0; i < list.length; i += 3) setPixel(list[i], list[i+1], list[i+2]);
+  },
+
+  /** Serverdagi 1 000 000 baytlik snapshot. */
+  loadSnapshot(bytes){
+    state.set(bytes.subarray(0, N * N));
+    blitAll();
+  },
+
+  /** Onlayn soni — kullaut shunga bog‘liq. */
+  setOnline(n){ online = n | 0; paintOnlineUI(); paintEnergyUI(); },
+
+  /** Zaxira chegarasi — do'st chaqirish bonusi bilan serverdan keladi. */
+  setMaxEnergy(m){
+    if (m > 0 && m !== MAX_E){ MAX_E = m | 0; paintEnergyUI(); }
+  },
+
+  /** Serverdagi haqiqiy energiya bilan sinxronlash (server — yagona haqiqat). */
+  setEnergy(e, nextMs){
+    eBase = Math.max(0, Math.min(MAX_E, e | 0));
+    const cd = cooldownMs();
+    eAt = (nextMs > 0) ? Date.now() - (cd - Math.min(cd, nextMs)) : Date.now();
+    paintEnergyUI();
+  },
+
+  getPixel(x, y){ return state[y * N + x]; },
+
+  palette: PALETTE,
+  size: N,
+
+  /** Butun doska ko'rinadigan masshtab. */
+  fit: fitAll,
+
+  /** Doska butun ekranni qoplaydigan masshtab — kirish ekrani foni uchun.
+   *  Shunda orqada kichkina kvadrat emas, to'ldirilgan rasm ko'rinadi. */
+  cover: coverAll,
+
+  toast,
+  onPaint: null,     // (x, y, color, prev) => ws.send(...)
+  onReport: null,    // (x, y) => ws.send(...)
+  onFriends: null    // () => do'stlar oynasini ochish
+};
+
+/* ================================================================
+   DEMO  (DEMO = false qilinsa butunlay o‘chadi)
+   ================================================================ */
+function seedDemo(){
+  const t = document.createElement('canvas');
+  t.width = t.height = N;
+  const tc = t.getContext('2d');
+  tc.fillStyle = '#fff'; tc.fillRect(0, 0, N, N);
+  tc.fillStyle = '#000';
+  tc.textAlign = 'center'; tc.textBaseline = 'middle';
+  tc.font = 'bold 190px system-ui, sans-serif';
+  tc.fillText('MILLION', 500, 430);
+  tc.fillText('PIKSEL',  500, 600);
+
+  const d = tc.getImageData(0, 0, N, N).data;
+  for (let i = 0; i < N*N; i++){
+    if (d[i*4] < 128) state[i] = (Math.floor(i / N) < 515) ? 6 : 13;   // qizil / ko‘k
+  }
+  // tarqoq bloklar — doska "tirik" ko‘rinsin
+  let s = 12345;
+  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  for (let k = 0; k < 120; k++){
+    const cx = (rnd() * N) | 0, cy = (rnd() * N) | 0;
+    const c  = (rnd() * PALETTE.length) | 0;
+    const w  = 3 + ((rnd() * 14) | 0), h = 3 + ((rnd() * 14) | 0);
+    for (let yy = cy; yy < Math.min(N, cy + h); yy++)
+      for (let xx = cx; xx < Math.min(N, cx + w); xx++)
+        state[yy * N + xx] = c;
+  }
+  blitAll();
+}
+
+/* ================================================================
+   START
+   ================================================================ */
+readTheme();
+resize();
+if (DEMO) seedDemo();
+fitAll();
+paintOnlineUI();
+paintEnergyUI();
+
+// Demo uchun onlayn soni sekin o‘zgaradi. Backend ulanganda o‘chiring.
+if (DEMO){
+  setInterval(() => {
+    online = Math.max(3, Math.min(9, online + (Math.random() < .5 ? -1 : 1)));
+    paintOnlineUI();
+  }, 4000);
+}
+</script>
+</body>
+</html>

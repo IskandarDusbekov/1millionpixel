@@ -1,0 +1,14 @@
+# Qator oxirlari. Windows'da ishlab, Linux serverda ishga tushiriladi —
+# shuning uchun Linux o'qiydigan fayllar HAR DOIM LF bilan saqlanadi.
+# Aks holda CRLF Docker va nginx konfiguratsiyalarida muammo beradi.
+* text=auto eol=lf
+
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.zip   binary
+*.woff2 binary
