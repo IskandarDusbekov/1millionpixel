@@ -85,8 +85,15 @@ else:
             "PASSWORD": env("POSTGRES_PASSWORD", "mp"),
             "HOST": env("POSTGRES_HOST", "127.0.0.1"),
             "PORT": env("POSTGRES_PORT", "5432"),
-            "CONN_MAX_AGE": 60,
-            "OPTIONS": {"pool": {"min_size": 2, "max_size": 10}},
+            # CONN_MAX_AGE va pool BIRGA ishlamaydi — Django
+            # "Pooling doesn't support persistent connections" deb
+            # ishga tushmaydi. Pool allaqachon ulanishlarni qayta
+            # ishlatadi, ya'ni CONN_MAX_AGE keraksiz.
+            "CONN_MAX_AGE": 0,
+            # Har bir protsess o'z poolini ochadi: 2 web worker +
+            # history + timelapse = 4 x 8 = 32 ulanish, postgres'dagi
+            # max_connections=50 ga sig'adi.
+            "OPTIONS": {"pool": {"min_size": 1, "max_size": 8}},
         }
     }
 
