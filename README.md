@@ -392,6 +392,29 @@ etiladi** (ichida skript bo'lishi mumkin); nomi tasodifiy (`/media/uploads/…`)
 Nginx `/admin/panel/api/files/upload` uchun 6 MB ga ruxsat berishi kerak
 (`deploy/nginx*.conf` da bor).
 
+### Chizish nazorati (vaqt bo'yicha boshqaruv)
+
+Panel → **Sayt holati** → «Chizish nazorati»:
+
+- **Cheksiz chizish** — bo'yoq sarflanmaydi. Qo'lda yoqiladi yoki **oyna** bilan
+  (`unlimited_from`/`unlimited_until`), masalan tadbir uchun «1 / 3 / 24 soat»
+  tugmalari bilan. Lua skriptda `unlimited` bayrog'i energiyani o'tkazib yuboradi.
+- **Chizish oynasi** (`draw_from`/`draw_until`) — oynadan tashqarida doska
+  avtomatik «faqat ko'rish» bo'ladi (kechasi yopish, tanlov boshlanishini kutish).
+- **Tiklanish vaqti** — 1 bo'yoq necha soniyada tiklanishini qo'lda belgilash
+  (0 = onlayn soniga qarab).
+- **Faqat ko'rish** — qo'lda.
+
+Sozlamalar Redis'ga (`mp:ctl`) yoziladi; hisoblash `canvas/control.py` da (DB'siz,
+sof funksiya). Lock ushlab turgan worker har 2 soniyada vaqtga qarab holatni
+hisoblab, `MSG_ONLINE` paketi bilan hammaga yuboradi (`[online][kullaut_ms][bayroqlar]`,
+bit0 — faqat ko'rish, bit1 — cheksiz). Shuning uchun oyna vaqti kelganda panelga
+kirish shart emas va bo'yash yo'lida qo'shimcha Redis so'rovi yo'q. Vaqtlar
+brauzer vaqt mintaqasida kiritiladi, bazada UTC.
+
+**Google fayl usuli:** SEO → «Google HTML fayl nomi» ga `google420f….html`
+yozing — `/google420f….html` shu matn bilan javob beradi.
+
 ### Faqat ko'rish rejimi va e'lon
 
 Panelda yoqilganda bayroq Redis'ga (`mp:readonly`) yoziladi. Har worker uni

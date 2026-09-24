@@ -29,6 +29,7 @@ import time
 
 from django.conf import settings
 
+from . import control as ctl
 from .cooldown import cooldown_ms
 from .redis_store import (K_BUF, K_ONLINE, K_ONLINE_CH, K_PIXEL_CH, store)
 
@@ -45,13 +46,22 @@ MSG_RELOAD = 0x05       # snapshot'ni qayta yuklash (katta rollback'dan keyin)
 MSG_REJECT = 0x06       # optimistik bo'yashni bekor qilish
 
 DRAIN_LIMIT = 4096          # bitta paketdagi maksimal piksel
-_online_state = {"n": 0, "cd": cooldown_ms(0), "ro": False}
+_online_state = {"n": 0, "cd": cooldown_ms(0), "flags": 0}
 
 
 def readonly_now() -> bool:
-    """"Faqat ko'rish" rejimi. Redis'dan online_loop har 2 soniyada yangilaydi,
-    shuning uchun bo'yash yo'lida qo'shimcha so'rov yo'q."""
-    return _online_state["ro"]
+    """"Faqat ko'rish" (qo'lda yoki jadval bo'yicha). Holat har 2 soniyada
+    pub/sub orqali keladi, shuning uchun bo'yash yo'lida Redis so'rovi yo'q."""
+    return bool(_online_state["flags"] & ctl.FLAG_READONLY)
+
+
+def unlimited_now() -> bool:
+    """Cheksiz chizish: bo'yoq sarflanmaydi."""
+    return bool(_online_state["flags"] & ctl.FLAG_UNLIMITED)
+
+
+def flags_now() -> int:
+    return _online_state["flags"]
 
 
 def online_now() -> int:
@@ -71,8 +81,9 @@ def pack_toast(text: str) -> bytes:
     return bytes([MSG_TOAST]) + text.encode("utf-8")
 
 
-def pack_online(n: int, cd: int) -> bytes:
-    return struct.pack("!BII", MSG_ONLINE, n, cd)
+def pack_online(n: int, cd: int, flags: int = 0) -> bytes:
+    # flags: bit0 — faqat ko'rish, bit1 — cheksiz chizish
+    return struct.pack("!BIIB", MSG_ONLINE, n, cd, flags)
 
 
 def pack_reject(x: int, y: int) -> bytes:
@@ -122,8 +133,9 @@ async def subscribe_loop() -> None:
                     continue
                 data = msg["data"]
                 if msg["channel"] == K_ONLINE_CH.encode():
-                    _, n, cd = struct.unpack("!BII", data)
+                    _, n, cd, fl = struct.unpack("!BIIB", data)
                     _online_state["n"], _online_state["cd"] = n, cd
+                    _online_state["flags"] = fl
                 await _fanout(data)
         except Exception:
             log.exception("subscribe_loop")
@@ -162,13 +174,15 @@ async def online_loop() -> None:
         try:
             now = int(time.time() * 1000)
             await refresh_presence(now)
-            _online_state["ro"] = await store.is_readonly()
 
             # SET NX — faqat bitta protsess sanaydi, qolganlari pub/sub'dan oladi
             got = await r.set("mp:lock:online", b"1", nx=True, px=lock_ttl)
             if got:
                 n = await store.recount_online(now)
-                await r.publish(K_ONLINE_CH, pack_online(n, cooldown_ms(n)))
+                # Nazorat holati vaqtga qarab shu yerda hisoblanadi (jadval oynalari)
+                ro, unl, cd_over = ctl.compute(await store.get_ctl(), now)
+                await r.publish(K_ONLINE_CH, pack_online(
+                    n, cd_over or cooldown_ms(n), ctl.flags(ro, unl)))
         except Exception:
             log.exception("online_loop")
         await asyncio.sleep(interval)

@@ -29,7 +29,7 @@ K_PIXEL_CH = "mp:ch:pixels"     # pub/sub: piksel paketlari
 K_ONLINE_CH = "mp:ch:online"    # pub/sub: onlayn soni
 K_PLACED = "mp:placed"          # jami qo'yilgan piksel (timelapse faolligi)
 K_TIMELAPSE_ON = "mp:timelapse:on"   # surat olish yoqilganmi
-K_READONLY = "mp:readonly"      # "faqat ko'rish" rejimi (admin paneldan)
+K_CTL = "mp:ctl"                # chizish nazorati (faqat ko'rish, cheksiz, jadval)
 
 
 def k_botlogin(code: str) -> str:
@@ -66,33 +66,39 @@ local cd  = tonumber(ARGV[4])
 local mx  = tonumber(ARGV[5])
 local pkt = ARGV[6]            -- 5 bayt: uint16 x, uint16 y, uint8 c
 local uid = ARGV[7]
+local unl = ARGV[8] == '1'         -- cheksiz rejim: bo'yoq sarflanmaydi
 
-local e  = tonumber(redis.call('HGET', ekey, 'e'))
-local at = tonumber(redis.call('HGET', ekey, 'at'))
-if e == nil or at == nil then e = mx; at = now end
-
-if e >= mx then
-  -- zaxira to'la edi: sanagich aynan shu bo'yashdan boshlanadi
+local e, at
+if unl then
   e = mx
-  at = now
 else
-  local g = math.floor((now - at) / cd)
-  if g > 0 then
-    if e + g >= mx then
-      e = mx; at = now
-    else
-      -- yarim yig'ilgan vaqt yo'qolmasin: at ni faqat butun qadamga suramiz
-      e = e + g; at = at + g * cd
+  e  = tonumber(redis.call('HGET', ekey, 'e'))
+  at = tonumber(redis.call('HGET', ekey, 'at'))
+  if e == nil or at == nil then e = mx; at = now end
+
+  if e >= mx then
+    -- zaxira to'la edi: sanagich aynan shu bo'yashdan boshlanadi
+    e = mx
+    at = now
+  else
+    local g = math.floor((now - at) / cd)
+    if g > 0 then
+      if e + g >= mx then
+        e = mx; at = now
+      else
+        -- yarim yig'ilgan vaqt yo'qolmasin: at ni faqat butun qadamga suramiz
+        e = e + g; at = at + g * cd
+      end
     end
   end
-end
 
-if e < 1 then
-  return {0, e, cd - ((now - at) % cd)}
-end
+  if e < 1 then
+    return {0, e, cd - ((now - at) % cd)}
+  end
 
-e = e - 1
-redis.call('HSET', ekey, 'e', e, 'at', at)
+  e = e - 1
+  redis.call('HSET', ekey, 'e', e, 'at', at)
+end
 -- 'n' = shu foydalanuvchi qo'ygan piksellar soni. Chaqiruv bonusi shunga
 -- qaraydi, shuning uchun u PostgreSQL'ga (drain_history) bog'liq emas.
 redis.call('HINCRBY', ekey, 'n', 1)
@@ -156,7 +162,8 @@ class Store:
     # -------------------------------------------------- piksel qo'yish
     async def place(self, uid: int, x: int, y: int, color: int,
                     now_ms: int, cooldown_ms: int,
-                    max_energy: int | None = None) -> tuple[bool, int, int]:
+                    max_energy: int | None = None,
+                    unlimited: bool = False) -> tuple[bool, int, int]:
         """(ruxsat berildi, qolgan energiya, keyingi piksel ms) qaytaradi."""
         off = y * N + x
         pkt = (x.to_bytes(2, "big") + y.to_bytes(2, "big")
@@ -164,7 +171,8 @@ class Store:
         ok, energy, nxt = await self._place_aio(
             keys=[K_CANVAS, k_energy(uid), K_BUF, K_HIST, K_PLACED],
             args=[off, bytes([color]), now_ms, cooldown_ms,
-                  max_energy or settings.MAX_ENERGY, pkt, uid],
+                  max_energy or settings.MAX_ENERGY, pkt, uid,
+                  "1" if unlimited else "0"],
             client=self.aio,
         )
         return bool(ok), int(energy), int(nxt)
@@ -242,8 +250,16 @@ class Store:
     def key_delete_sync(self, key: str) -> None:
         self.sync.delete(key)
 
-    async def is_readonly(self) -> bool:
-        return bool(await self.aio.exists(K_READONLY))
+    async def get_ctl(self) -> dict:
+        """Chizish nazorati sozlamalari (admin paneldan; control.py ga qarang)."""
+        v = await self.aio.get(K_CTL)
+        try:
+            return json.loads(v) if v else {}
+        except ValueError:
+            return {}
+
+    def set_ctl_sync(self, ctl: dict) -> None:
+        self.sync.set(K_CTL, json.dumps(ctl).encode())
 
     # -------------------------------------------------- bot orqali kirish
     # Yozuv JSON: {"s": "p", ip, ua}  — brauzer kutmoqda,

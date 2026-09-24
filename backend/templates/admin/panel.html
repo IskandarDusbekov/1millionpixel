@@ -113,7 +113,7 @@ label.l{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px}
 label.l .cnt{float:right;font-variant-numeric:tabular-nums}
 label.l .cnt.bad{color:var(--danger)}
 label.l .cnt.good{color:var(--ok)}
-input[type=text],input[type=number],input[type=url],input[type=password],select,textarea{
+input[type=text],input[type=number],input[type=url],input[type=password],input[type=datetime-local],select,textarea{
   width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);
   background:transparent;
 }
@@ -471,6 +471,9 @@ textarea{resize:vertical;min-height:74px;line-height:1.45}
             <label class="sw2"><input type="checkbox" id="f_robots_index"><span class="tg"></span><span><span class="t">Qidiruv tizimlariga ochiq</span><small>O‘chirilsa: noindex + robots.txt “Disallow: /”.</small></span></label>
             <label class="l" for="f_google_verification">Google Search Console kodi</label>
             <input type="text" id="f_google_verification" maxlength="120" placeholder="meta tag content qiymati">
+            <label class="l" for="f_google_file">Google HTML fayl nomi</label>
+            <input type="text" id="f_google_file" maxlength="60" placeholder="google420f860xxxxxxxx.html">
+            <p class="hint">Search Console «HTML fayl» usulini bersa, faqat fayl nomini yozing — sayt <code>/google….html</code> manzilida o‘zi javob beradi.</p>
             <label class="l" for="f_yandex_verification">Yandex Webmaster kodi</label>
             <input type="text" id="f_yandex_verification" maxlength="120">
             <p class="hint"><a href="/robots.txt" target="_blank" rel="noopener">robots.txt</a> · <a href="/sitemap.xml" target="_blank" rel="noopener">sitemap.xml</a> · <a href="/manifest.webmanifest" target="_blank" rel="noopener">manifest</a> — avtomatik yaratiladi.</p>
@@ -522,6 +525,35 @@ textarea{resize:vertical;min-height:74px;line-height:1.45}
         <label class="sw2"><input type="checkbox" id="s_announcement_on"><span class="tg"></span><span class="t">E’lonni ko‘rsatish</span></label>
         <label class="l" for="s_announcement">Matn <span class="cnt" id="n_ann"></span></label>
         <input type="text" id="s_announcement" maxlength="200" placeholder="Masalan: Bugun kechqurun katta chizish tanlovi!">
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin:0 0 4px"><h2 style="margin:0">Chizish nazorati</h2><span class="chip" id="effState">—</span></div>
+        <p class="desc">Vaqtni belgilab boshqaring: masalan, tadbir uchun bir soatga cheksiz chizish yoki tunda doskani yopish. Vaqt kelganda o‘zi almashadi, panelga kirish shart emas.</p>
+
+        <label class="sw2"><input type="checkbox" id="s_unlimited"><span class="tg"></span><span><span class="t">Cheksiz chizish (hozir)</span><small>Bo‘yoq sarflanmaydi — hamma xohlagancha chizadi.</small></span></label>
+        <div class="row" style="margin-top:6px">
+          <button class="btn sm" data-unl="1">Cheksiz: 1 soat</button>
+          <button class="btn sm" data-unl="3">3 soat</button>
+          <button class="btn sm" data-unl="24">24 soat</button>
+          <button class="btn sm" data-unl="0">Oynani tozalash</button>
+        </div>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="l" for="s_unlimited_from">Cheksiz oyna: boshlanishi</label><input type="datetime-local" id="s_unlimited_from"></div>
+          <div><label class="l" for="s_unlimited_until">tugashi</label><input type="datetime-local" id="s_unlimited_until"></div>
+        </div>
+
+        <label class="l" for="s_cooldown_override">1 bo‘yoq tiklanish vaqti (soniya)</label>
+        <input type="number" id="s_cooldown_override" min="0" max="3600" placeholder="0">
+        <p class="hint">0 = avtomatik (onlayn soniga qarab: 1 / 10 / 30 / 60 s). Masalan, 1 qo‘ysangiz hamma juda tez chizadi.</p>
+
+        <label class="l" style="margin-top:16px">Chizish oynasi (jadval)</label>
+        <p class="hint" style="margin:0 0 8px">Belgilansa, oynadan TASHQARIDA doska avtomatik «faqat ko‘rish» bo‘ladi. Faqat boshlanish — o‘shandan keyin ochiladi; faqat tugash — o‘shanda yopiladi.</p>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="l" for="s_draw_from">ochiladi</label><input type="datetime-local" id="s_draw_from"></div>
+          <div><label class="l" for="s_draw_until">yopiladi</label><input type="datetime-local" id="s_draw_until"></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn sm" data-clrdraw="1">Jadvalni tozalash</button></div>
+        <p class="hint">Vaqt sizning brauzeringiz vaqt mintaqasida (hozir: <span id="tzName">—</span>).</p>
       </div>
       <div class="card">
         <h2>Faqat ko‘rish rejimi</h2>
@@ -988,7 +1020,24 @@ $('tlShoot').onclick = () => api.post('/admin/panel/api/timelapse/shoot')
 
 /* ============================================================ SEO + sayt holati */
 const SEO_TEXT = ['seo_title','seo_description','seo_keywords','seo_text','site_name','public_url',
-                  'og_image','favicon','theme_color','locale','twitter','google_verification','yandex_verification'];
+                  'og_image','favicon','theme_color','locale','twitter','google_verification','yandex_verification',
+                  'google_file'];
+const DT_FIELDS = ['draw_from','draw_until','unlimited_from','unlimited_until'];
+/* ISO (UTC) -> <input type=datetime-local> qiymati (brauzer vaqti) va aksincha */
+function toLocalInput(iso){
+  if (!iso) return '';
+  const d = new Date(iso), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+const fromLocalInput = (v) => v ? new Date(v).toISOString() : null;
+function showEffective(e){
+  const parts = [];
+  if (e.readonly) parts.push('faqat ko‘rish');
+  if (e.unlimited) parts.push('cheksiz chizish');
+  if (e.cooldown_ms) parts.push('tiklanish ' + (e.cooldown_ms / 1000) + ' s');
+  $('effState').textContent = 'Hozir: ' + (parts.join(' · ') || 'oddiy rejim');
+  $('effState').className = 'chip ' + (e.readonly ? 'ban' : (e.unlimited ? 'ok' : ''));
+}
 let siteData = null, seoDirty = false;
 
 function loadSite(){
@@ -1000,6 +1049,11 @@ function loadSite(){
     $('s_announcement').value = d.announcement || '';
     $('s_announcement_on').checked = d.announcement_on;
     $('s_readonly').checked = d.readonly;
+    $('s_unlimited').checked = d.unlimited;
+    $('s_cooldown_override').value = d.cooldown_override || '';
+    DT_FIELDS.forEach(k => { $('s_' + k).value = toLocalInput(d[k]); });
+    $('tzName').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    showEffective(d.effective);
     $('n_ann').textContent = ($('s_announcement').value.length) + '/200';
     setDirty(false); seoPreview();
   }).catch(fail);
@@ -1032,7 +1086,7 @@ function seoPreview(){
     [$('f_seo_keywords').value.trim().length > 0, 'Kalit so‘zlar bor', 'Google uchun kam ta’sir qiladi, Yandex/Bing uchun foydali.'],
     [$('f_seo_text').value.trim().length >= 80, 'Robotlar uchun matn (80+ belgi)', 'Sahifada matn bo‘lmasa, qidiruv tizimi kam narsa tushunadi.'],
     [$('f_robots_index').checked, 'Indekslashga ruxsat berilgan', 'O‘chiq bo‘lsa, sayt qidiruvda chiqmaydi.'],
-    [!!($('f_google_verification').value.trim() || $('f_yandex_verification').value.trim()), 'Search Console tasdiqlangan', 'Indekslash holatini ko‘rish uchun.'],
+    [!!($('f_google_verification').value.trim() || $('f_google_file').value.trim() || $('f_yandex_verification').value.trim()), 'Search Console tasdiqlangan', 'Indekslash holatini ko‘rish uchun.'],
   ];
   const ok = checks.filter(c => c[0]).length;
   $('seoScore').textContent = Math.round(ok / checks.length * 100) + '%';
@@ -1058,9 +1112,27 @@ $('seoSave').onclick = () => {
   SEO_TEXT.forEach(k => p[k] = $('f_' + k).value);
   saveSite(p, () => setDirty(false));
 };
-$('siteSave').onclick = () => saveSite({
-  announcement: $('s_announcement').value, announcement_on: $('s_announcement_on').checked,
-  readonly: $('s_readonly').checked
+function sitePayload(){
+  const p = {
+    announcement: $('s_announcement').value, announcement_on: $('s_announcement_on').checked,
+    readonly: $('s_readonly').checked, unlimited: $('s_unlimited').checked,
+    cooldown_override: $('s_cooldown_override').value || 0
+  };
+  DT_FIELDS.forEach(k => { p[k] = fromLocalInput($('s_' + k).value); });
+  return p;
+}
+$('siteSave').onclick = () => saveSite(sitePayload(), d => showEffective(d.effective));
+/* tezkor tugmalar: "shu paytdan N soat cheksiz" */
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-unl],[data-clrdraw]'); if (!b) return;
+  if (b.dataset.unl !== undefined){
+    const h = +b.dataset.unl;
+    if (!h){ $('s_unlimited_from').value = ''; $('s_unlimited_until').value = ''; return; }
+    const now = new Date();
+    $('s_unlimited_from').value = toLocalInput(now.toISOString());
+    $('s_unlimited_until').value = toLocalInput(new Date(now.getTime() + h * 3600e3).toISOString());
+    toast('Oyna qo‘yildi — «Saqlash» ni bosing');
+  } else { $('s_draw_from').value = ''; $('s_draw_until').value = ''; }
 });
 addEventListener('beforeunload', e => { if (seoDirty){ e.preventDefault(); e.returnValue = ''; } });
 

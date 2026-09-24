@@ -66,7 +66,7 @@ class PixelConsumer(AsyncWebsocketConsumer):
 
         # Boshlang'ich holat: onlayn + shaxsiy energiya
         n, cd = bc.online_now(), bc.cooldown_now()
-        await self.send(bytes_data=bc.pack_online(n, cd))
+        await self.send(bytes_data=bc.pack_online(n, cd, bc.flags_now()))
         energy, nxt = await store.energy(self.uid, now, cd, self.max_energy)
         await self.send(bytes_data=bc.pack_energy(energy, self.max_energy, nxt))
 
@@ -138,7 +138,8 @@ class PixelConsumer(AsyncWebsocketConsumer):
         cd = bc.cooldown_now()
 
         ok, energy, nxt = await store.place(self.uid, x, y, color, now, cd,
-                                            self.max_energy)
+                                            self.max_energy,
+                                            unlimited=bc.unlimited_now())
 
         # Har doim shaxsiy energiya javobi — brauzer sanagichi server bilan
         # sinxron bo'lib qoladi (foydalanuvchi soatini o'zgartirsa ham).

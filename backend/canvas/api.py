@@ -208,12 +208,13 @@ def auth_bot_poll(request, code: str, ref: str = ""):
 # --------------------------------------------------------------------------
 @api.get("/site", auth=None)
 def site_info(request):
-    from .site import get_settings
+    from .site import effective, get_settings
 
     s = get_settings()
+    eff = effective(s)
     return {"name": s.site_name,
             "announcement": s.announcement if s.announcement_on else "",
-            "readonly": s.readonly}
+            "readonly": eff["readonly"], "unlimited": eff["unlimited"]}
 
 
 # --------------------------------------------------------------------------

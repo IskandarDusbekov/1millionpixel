@@ -17,8 +17,9 @@ from html import escape
 
 from django.http import HttpResponse
 
+from . import control
 from .models import SiteSettings
-from .redis_store import K_READONLY, store
+from .redis_store import store
 
 CACHE_SEC = 10
 _lock = threading.Lock()
@@ -40,12 +41,35 @@ def invalidate() -> None:
     _cache.update(at=-1e9, obj=None)
 
 
-def mirror_readonly(on: bool) -> None:
-    """Consumer'lar DB'ga bormaydi — bayroq Redis'da turadi."""
-    if on:
-        store.sync.set(K_READONLY, b"1")
-    else:
-        store.sync.delete(K_READONLY)
+def _ms(dt) -> int:
+    return int(dt.timestamp() * 1000) if dt else 0
+
+
+def control_dict(s: SiteSettings) -> dict:
+    """SiteSettings -> Redis'dagi nazorat JSON (control.py formati)."""
+    return {"ro": s.readonly, "unl": s.unlimited, "cd": s.cooldown_override,
+            "draw_from": _ms(s.draw_from), "draw_until": _ms(s.draw_until),
+            "unl_from": _ms(s.unlimited_from), "unl_until": _ms(s.unlimited_until)}
+
+
+def mirror_control(s: SiteSettings) -> None:
+    """Consumer'lar DB'ga bormaydi — nazorat sozlamalari Redis'da turadi."""
+    store.set_ctl_sync(control_dict(s))
+
+
+def effective(s: SiteSettings) -> dict:
+    """Hozirgi samarali holat (jadval oynalari hisobga olingan)."""
+    ro, unl, cd = control.compute(control_dict(s), int(time.time() * 1000))
+    return {"readonly": ro, "unlimited": unl, "cooldown_ms": cd}
+
+
+def verify_file(request, name: str):
+    """Google Search Console "HTML fayl" usuli: /googleXXXX.html."""
+    s = get_settings()
+    if not s.google_file or name != s.google_file:
+        return HttpResponse(status=404)
+    return HttpResponse(f"google-site-verification: {name}",
+                        content_type="text/html; charset=utf-8")
 
 
 def base_url(request, s: SiteSettings) -> str:

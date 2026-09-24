@@ -382,6 +382,8 @@ let eBase   = MAX_E;      // oxirgi bo‘yashdagi energiya
 let eAt     = Date.now(); // oxirgi bo‘yash vaqti
 let lastCell = null;      // oxirgi bosilgan katak
 let readonly = !!CFG.readonly;
+let unlimited = !!CFG.unlimited;   // cheksiz chizish: bo‘yoq sarflanmaydi (server boshqaradi)
+let srvCd = 0;                     // serverdan kelgan tiklanish vaqti (ms), 0 = o‘zimiz hisoblaymiz
 let drawMode = false;     // barmoqni sudrab chizish
 let pickMode = false;     // keyingi bosish rangni oladi
 let painted  = 0;         // shu foydalanuvchi qo‘ygan piksellar (yutuqlar uchun)
@@ -818,6 +820,7 @@ function haptic(kind){
    BO‘YOQ (energiya)  —  saqlanmaydi, oxirgi bo‘yash vaqtidan hisoblanadi
    ================================================================ */
 function cooldownMs(){
+  if (srvCd > 0)     return srvCd;       // server yagona haqiqat (admin sozlamasi ham shu yerda)
   if (online < 10)   return 1000;
   if (online < 100)  return 10000;
   if (online < 1000) return 30000;
@@ -865,6 +868,14 @@ function chargeGained(n){
 }
 
 function paintEnergyUI(){
+  if (unlimited){
+    energyTxt.innerHTML = '<b>∞</b> · cheksiz';
+    ebarFill.style.width = '100%';
+    brushN.textContent = '∞';
+    brushEl.classList.remove('empty'); brushEl.classList.add('full');
+    lastE = MAX_E;
+    return;
+  }
   const { e, next } = energyNow();
   if (e > lastE) chargeGained(e - lastE);
   if (e === 1 && lastE === 0 && !document.hidden) toast('Bo‘yoq qaytdi — davom eting!');
@@ -886,7 +897,7 @@ setInterval(paintEnergyUI, 200);
 let lastRing = -1;
 function updateRing(){
   const { e, next } = energyNow();
-  const p = e >= MAX_E ? 1 : Math.max(0, Math.min(1, 1 - next / cooldownMs()));
+  const p = (unlimited || e >= MAX_E) ? 1 : Math.max(0, Math.min(1, 1 - next / cooldownMs()));
   if (Math.abs(p - lastRing) > .002){
     lastRing = p;
     brushEl.style.setProperty('--p', p);
@@ -953,13 +964,15 @@ function paint(x, y, quiet){
     lastCell = { x, y }; showCoord(x, y);
     return 'same';
   }
-  if (energyNow().e < 1){
-    noEnergy();
-    return 'none';
+  if (!unlimited){
+    if (energyNow().e < 1){
+      noEnergy();
+      return 'none';
+    }
+    spendOne();
+    lastE = energyNow().e;                // sarflash "tiklanish" bo‘lib ko‘rinmasin
+    paintEnergyUI();
   }
-  spendOne();
-  lastE = energyNow().e;                  // sarflash "tiklanish" bo‘lib ko‘rinmasin
-  paintEnergyUI();
 
   const prev = state[y * N + x];          // server rad etsa — shu qiymatga qaytariladi
   setPixel(x, y, color);
@@ -1372,7 +1385,7 @@ const announceTxt = document.getElementById('announceTxt');
 let announcement = '', announceClosed = '';
 function paintAnnounce(){
   const msg = readonly ? 'Doska hozir faqat ko‘rish rejimida — chizish vaqtincha to‘xtatilgan'
-                       : announcement;
+            : (announcement || (unlimited ? 'Cheksiz chizish yoqilgan — bo‘yoq tugamaydi!' : ''));
   const show = msg && msg !== announceClosed;
   announceEl.hidden = !show;
   announceEl.classList.toggle('ro', readonly);
@@ -1380,7 +1393,7 @@ function paintAnnounce(){
   measure(); resize();
 }
 document.getElementById('announceX').addEventListener('click', () => {
-  announceClosed = readonly ? 'Doska hozir faqat ko‘rish rejimida — chizish vaqtincha to‘xtatilgan' : announcement;
+  announceClosed = announceTxt.textContent;
   try { sessionStorage.setItem('mp_ann_closed', announceClosed); } catch (e) {}
   paintAnnounce();
 });
@@ -1420,6 +1433,23 @@ ro.observe(document.querySelector('.top'));
 
 const mq = matchMedia('(prefers-color-scheme: dark)');
 (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(readTheme);
+
+/** Faqat-ko‘rish / cheksiz holati o‘zgarganda (server yoki jadval bo‘yicha). */
+function applyFlags(ro, unl){
+  const wasUnl = unlimited, wasRo = readonly;
+  if (ro === wasRo && unl === wasUnl) return;
+  readonly = ro; unlimited = unl;
+  if (unl && !wasUnl){
+    toast('Cheksiz chizish boshlandi — bo‘yoq tugamaydi!', true);
+    sfxWin(); haptic('ok');
+  } else if (!unl && wasUnl){
+    // cheksiz rejim tugadi: zaxirani to‘la deb hisoblaymiz, server keyingi javobda aniqlaydi
+    eBase = MAX_E; eAt = Date.now(); lastE = MAX_E;
+    toast('Cheksiz chizish tugadi');
+  }
+  if (!ro && wasRo) toast('Chizish yana ochildi!', true);
+  paintEnergyUI(); paintAnnounce();
+}
 
 /* ================================================================
    HAVOLADAGI KOORDINATA:  /#x,y,zoom
@@ -1482,9 +1512,14 @@ window.MP = {
   setSite(s){
     if (!s) return;
     announcement = s.announcement || '';
-    readonly = !!s.readonly;
-    paintAnnounce();
+    applyFlags(!!s.readonly, !!s.unlimited);
   },
+
+  /** WebSocket'dan (har 2 s): bit0 — faqat ko‘rish, bit1 — cheksiz chizish. */
+  setFlags(ro, unl){ applyFlags(!!ro, !!unl); },
+
+  /** Server belgilagan 1 bo‘yoq tiklanish vaqti (ms). */
+  setCooldown(ms){ srvCd = ms | 0; },
 
   getPixel(x, y){ return state[y * N + x]; },
 

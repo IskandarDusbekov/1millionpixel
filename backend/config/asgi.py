@@ -20,6 +20,14 @@ from canvas.routing import websocket_urlpatterns  # noqa: E402
 
 store.ensure_canvas()
 
+# Nazorat sozlamalarini DB'dan Redis'ga qayta yozamiz (Redis tozalangan bo'lsa
+# ham jadval/cheksiz rejim yo'qolmasin). Baza hali tayyor bo'lmasa — o'tkazamiz.
+try:
+    from canvas import site as _site
+    _site.mirror_control(_site.get_settings())
+except Exception:
+    pass
+
 django_asgi = get_asgi_application()
 _inner = ProtocolTypeRouter({
     "http": django_asgi,

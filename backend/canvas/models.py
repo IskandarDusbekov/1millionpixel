@@ -193,11 +193,27 @@ class SiteSettings(models.Model):
     google_verification = models.CharField(max_length=120, blank=True)
     yandex_verification = models.CharField(max_length=120, blank=True)
 
+    google_file = models.CharField(
+        max_length=60, blank=True,
+        help_text="Google fayl usuli: google1234abcd.html (fayl nomi)")
+
     # --- Sayt holati ---
     announcement = models.CharField(max_length=200, blank=True)
     announcement_on = models.BooleanField(default=False)
     readonly = models.BooleanField(
         default=False, help_text="Faqat ko'rish rejimi: hech kim piksel qo'ya olmaydi.")
+
+    # --- Chizish nazorati (canvas/control.py bilan birga ishlaydi) ---
+    unlimited = models.BooleanField(
+        default=False, help_text="Cheksiz chizish: bo'yoq sarflanmaydi.")
+    cooldown_override = models.IntegerField(
+        default=0, help_text="1 piksel tiklanish vaqti (soniya). 0 = onlayn soniga qarab.")
+    # Chizish oynasi: undan tashqarida doska avtomatik "faqat ko'rish" bo'ladi
+    draw_from = models.DateTimeField(null=True, blank=True)
+    draw_until = models.DateTimeField(null=True, blank=True)
+    # Cheksiz chizish oynasi (tadbir uchun)
+    unlimited_from = models.DateTimeField(null=True, blank=True)
+    unlimited_until = models.DateTimeField(null=True, blank=True)
 
     updated_at = models.DateTimeField(auto_now=True)
 

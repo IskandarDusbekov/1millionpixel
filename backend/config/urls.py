@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import HttpResponse
 from django.templatetags.static import static
-from django.urls import path
+from django.urls import path, re_path
 from django.views.decorators.clickjacking import xframe_options_exempt
 
 from canvas import adminpanel, site
@@ -49,6 +49,7 @@ def _template() -> str:
 def app_view(request):
     html = _template() if not settings.DEBUG else _template.__wrapped__()
     s = site.get_settings()
+    eff = site.effective(s)
 
     config = json.dumps({
         "telegram_enabled": bool(settings.TELEGRAM_BOT_TOKEN),
@@ -58,7 +59,8 @@ def app_view(request):
         "invite_bonus": settings.INVITE_BONUS_ENERGY,
         "site_name": s.site_name,
         "announcement": s.announcement if s.announcement_on else "",
-        "readonly": s.readonly,
+        "readonly": eff["readonly"],
+        "unlimited": eff["unlimited"],
     }).replace("</", "<\\/")
 
     # <title> va standart favicon o'rniga admin paneldagi qiymatlar qo'yiladi
@@ -113,6 +115,7 @@ urlpatterns = [
     path("sitemap.xml", site.sitemap_xml),
     path("manifest.webmanifest", site.manifest),
     path("icon-<int:size>.png", site.icon),
+    re_path(r"^(?P<name>google[0-9a-f]{8,40}\.html)$", site.verify_file),
     path("", app_view, name="app"),
 ]
 

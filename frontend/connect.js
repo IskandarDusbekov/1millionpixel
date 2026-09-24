@@ -317,6 +317,9 @@
         }
 
       } else if (type === MSG_ONLINE) {
+        // [uint32 online][uint32 kullaut_ms][uint8 bayroqlar: 1=faqat ko'rish, 2=cheksiz]
+        MP.setCooldown(d.getUint32(5));
+        if (d.byteLength > 9) MP.setFlags(d.getUint8(9) & 1, d.getUint8(9) & 2);
         MP.setOnline(d.getUint32(1));           // kullaut shundan hisoblanadi
 
       } else if (type === MSG_ENERGY) {

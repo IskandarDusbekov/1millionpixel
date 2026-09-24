@@ -23,6 +23,7 @@ from django.db.models.functions import TruncDate, TruncHour
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
@@ -155,7 +156,7 @@ def stats(request):
         "timelapse_on": tl.is_enabled(),
         "process_online": online_now(),
         "process_cooldown_ms": cooldown_now(),
-        "readonly": sitemod.get_settings().readonly,
+        **sitemod.effective(sitemod.get_settings()),
     })
 
 
@@ -440,14 +441,21 @@ _TEXT_FIELDS = {          # nom -> (max uzunlik)
     "google_verification": 120, "yandex_verification": 120,
     "announcement": 200,
 }
-_BOOL_FIELDS = ("robots_index", "announcement_on", "readonly")
+_BOOL_FIELDS = ("robots_index", "announcement_on", "readonly", "unlimited")
+_DT_FIELDS = ("draw_from", "draw_until", "unlimited_from", "unlimited_until")
 _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _VERIFY_RE = re.compile(r"^[A-Za-z0-9_\-]*$")
+_GFILE_RE = re.compile(r"^(google[0-9a-f]{8,40}\.html)?$")
 
 
 def _site_dict(s: SiteSettings) -> dict:
     d = {f: getattr(s, f) for f in (*_TEXT_FIELDS, *_BOOL_FIELDS, "public_url",
-                                    "og_image", "favicon", "theme_color")}
+                                    "og_image", "favicon", "theme_color",
+                                    "google_file", "cooldown_override")}
+    for f in _DT_FIELDS:
+        v = getattr(s, f)
+        d[f] = v.isoformat() if v else None
+    d["effective"] = sitemod.effective(s)
     d["updated_at"] = s.updated_at.isoformat()
     return d
 
@@ -499,6 +507,37 @@ def site_save(request):
             if f in data:
                 setattr(s, f, _clean_asset(data[f]))
                 changed.append(f)
+        if "google_file" in data:
+            v = str(data["google_file"] or "").strip()
+            if not _GFILE_RE.match(v):
+                raise ValueError("Google fayl nomi google1a2b3c….html ko'rinishida bo'lsin")
+            s.google_file = v
+            changed.append("google_file")
+        if "cooldown_override" in data:
+            try:
+                v = int(data["cooldown_override"] or 0)
+            except (TypeError, ValueError):
+                raise ValueError("Tiklanish vaqti butun son bo'lsin")
+            if not 0 <= v <= 3600:
+                raise ValueError("Tiklanish vaqti 0 dan 3600 soniyagacha")
+            s.cooldown_override = v
+            changed.append("cooldown_override")
+        for f in _DT_FIELDS:
+            if f in data:
+                raw = data[f]
+                dt = None
+                if raw:
+                    dt = parse_datetime(str(raw))
+                    if dt is None:
+                        raise ValueError(f"«{f}» sanasi noto'g'ri")
+                    if timezone.is_naive(dt):
+                        dt = timezone.make_aware(dt)
+                setattr(s, f, dt)
+                changed.append(f)
+        for a, b, label in (("draw_from", "draw_until", "Chizish oynasi"),
+                            ("unlimited_from", "unlimited_until", "Cheksiz oyna")):
+            if getattr(s, a) and getattr(s, b) and getattr(s, a) >= getattr(s, b):
+                raise ValueError(f"{label}: boshlanish tugashdan oldin bo'lsin")
         if "theme_color" in data:
             v = str(data["theme_color"] or "").strip()
             if not _COLOR_RE.match(v):
@@ -510,7 +549,7 @@ def site_save(request):
 
     s.save()
     sitemod.invalidate()
-    sitemod.mirror_readonly(s.readonly)
+    sitemod.mirror_control(s)
     ModerationLog.objects.create(admin=request.user.username, action="site",
                                  detail={"fields": changed})
     return JsonResponse({"ok": True, **_site_dict(s)})
