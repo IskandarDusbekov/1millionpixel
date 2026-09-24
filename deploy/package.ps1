@@ -5,8 +5,7 @@
 #
 # Nimalar KIRMAYDI: .venv (Windows binarlari, serverda ishlamaydi),
 # __pycache__, dev.sqlite3, media, staticfiles, .git va eng muhimi -
-# lokal .env (unda DEV_LOGIN=1 va sinov kalitlari bor, serverda
-# ular xavfli).
+# lokal .env (unda sinov kalitlari va DEBUG=1 bor, serverda ular xavfli).
 #
 # IZOH: bu fayl ataylab faqat ASCII belgilardan iborat. PowerShell 5.1
 # BOM'siz UTF-8 skriptni ANSI deb o'qiydi va uzun tire kabi belgilar satrni

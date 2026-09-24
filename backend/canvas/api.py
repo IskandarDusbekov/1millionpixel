@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import gzip
+import re
+import secrets
 import threading
 import time
 
@@ -18,7 +20,10 @@ from .invites import credit_pending
 from .models import Player, Report, Team
 from .redis_store import store
 
-api = NinjaAPI(title="Million Piksel", version="1.0", urls_namespace="mp")
+api = NinjaAPI(title="Million Piksel", version="1.0", urls_namespace="mp",
+               docs_url=None)      # /api/docs ni ochiq qoldirmaymiz
+
+BOT_LOGIN_TTL = 300               # kod 5 daqiqa amal qiladi
 
 
 class Bearer(HttpBearer):
@@ -137,8 +142,78 @@ def _tg_start_param(init_data: str) -> str:
 
 
 # Google OAuth va parolsiz "dasturchi kirishi" ataylab olib tashlangan.
-# Yagona kirish yo'li — Telegram Mini App: imzo bot tokeni bilan
-# tekshiriladi, ya'ni har bir piksel haqiqiy Telegram hisobiga bog'lanadi.
+# Kirish yo'llari faqat ikkita, ikkalasida ham Telegram hisobi tekshiriladi:
+#   1) Mini App ichida — initData imzosi bot tokeni bilan;
+#   2) Oddiy brauzerda — bot orqali (quyida): brauzer kod oladi, foydalanuvchi
+#      uni botda TASDIQLAYDI, brauzer natijani so'rab turadi.
+
+
+_CODE_RE = re.compile(r"^[0-9a-f]{16}$")
+
+
+class BotStartOut(Schema):
+    code: str
+    link: str
+    expires: int
+
+
+def _ua_hint(request) -> str:
+    """Tasdiqlash xabarida ko'rsatiladigan qisqa qurilma tavsifi."""
+    ua = request.headers.get("User-Agent", "")
+    browser = next((n for k, n in (("Edg/", "Edge"), ("OPR/", "Opera"),
+                                   ("Firefox/", "Firefox"), ("Chrome/", "Chrome"),
+                                   ("Safari/", "Safari")) if k in ua), "Brauzer")
+    system = next((n for k, n in (("Windows", "Windows"), ("Android", "Android"),
+                                  ("iPhone", "iPhone"), ("iPad", "iPad"),
+                                  ("Mac OS", "macOS"), ("Linux", "Linux"))
+                   if k in ua), "")
+    return f"{browser} · {system}".strip(" ·")
+
+
+@api.post("/auth/bot/start", response=BotStartOut, auth=None)
+def auth_bot_start(request):
+    if not (settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_USERNAME):
+        raise HttpError(503, "Telegram bot sozlanmagan")
+    ip = client_ip(request)
+    if store.rate_hit_sync(f"mp:rl:botstart:{ip}", 60) > 10:
+        raise HttpError(429, "Juda ko'p urinish, bir daqiqa kuting")
+
+    code = secrets.token_hex(8)
+    store.botlogin_create_sync(code, {"ip": ip, "ua": _ua_hint(request)},
+                               ttl=BOT_LOGIN_TTL)
+    return BotStartOut(
+        code=code, expires=BOT_LOGIN_TTL,
+        link=f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}?start=login_{code}")
+
+
+@api.get("/auth/bot/poll", auth=None)
+def auth_bot_poll(request, code: str, ref: str = ""):
+    if not _CODE_RE.match(code):
+        raise HttpError(400, "Kod noto'g'ri")
+    cur = store.botlogin_take_sync(code)
+    if cur is None:
+        return {"status": "expired"}
+    if cur.get("s") != "ok":
+        return {"status": "pending"}
+    info = {"provider": "telegram", "telegram_id": int(cur["telegram_id"]),
+            "username": cur.get("username", ""),
+            "display_name": cur.get("display_name", ""),
+            "photo_url": ""}
+    out = _login(request, info, ref)
+    return {"status": "ok", **out.dict()}
+
+
+# --------------------------------------------------------------------------
+# Ochiq sayt holati (e'lon, faqat-ko'rish rejimi) — mijoz vaqti-vaqti bilan so'raydi
+# --------------------------------------------------------------------------
+@api.get("/site", auth=None)
+def site_info(request):
+    from .site import get_settings
+
+    s = get_settings()
+    return {"name": s.site_name,
+            "announcement": s.announcement if s.announcement_on else "",
+            "readonly": s.readonly}
 
 
 # --------------------------------------------------------------------------

@@ -1,6 +1,9 @@
-"""Moderatsiya paneli — jonli kanvas, rollback, ban, shikoyatlar.
+"""Admin panel — moderatsiya, SEO, fayllar, sayt sozlamalari.
 
-Xavfsizlik: barcha view'lar `staff_member_required` ostida va oddiy Django
+Kirish: FAQAT superuser, login va parol bilan (`/admin/panel/login/`).
+Oddiy "staff" hisoblar ham kira olmaydi.
+
+Xavfsizlik: barcha view'lar `superuser_required` ostida va oddiy Django
 view'lar bo'lgani uchun CsrfViewMiddleware ularni himoya qiladi. POST'lar
 `X-CSRFToken` sarlavhasini talab qiladi (panel uni o'zi yuboradi).
 Shuning uchun bu endpointlar django-ninja'da emas — u POST'larni
@@ -9,21 +12,86 @@ csrf_exempt qiladi.
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
+from functools import wraps
 
 from django.conf import settings
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.db.models import Count, Sum
+from django.db.models.functions import TruncDate, TruncHour
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 
+from . import site as sitemod
+from .auth import client_ip
 from .broadcaster import cooldown_now, online_now
 from .cooldown import cooldown_seconds
-from .models import ModerationLog, PixelEvent, Player, Report, Team
+from .models import (ModerationLog, PixelEvent, Player, Report, SiteSettings,
+                     Team, UploadedFile)
 from .moderation import ban_player, rollback_area, unban_player
 from .redis_store import K_HIST, store
+
+LOGIN_PATH = "/admin/panel/login/"
+LOGIN_MAX_FAILS = 8            # shuncha xatodan keyin IP vaqtincha bloklanadi
+LOGIN_WINDOW_SEC = 15 * 60
+
+
+# --------------------------------------------------------------------------
+# Kirish: faqat superuser
+# --------------------------------------------------------------------------
+def superuser_required(view):
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        u = request.user
+        if u.is_authenticated and u.is_active and u.is_superuser:
+            return view(request, *args, **kwargs)
+        if request.path.startswith("/admin/panel/api/"):
+            return JsonResponse({"detail": "Kirish talab qilinadi"}, status=401)
+        return redirect(f"{LOGIN_PATH}?next={request.path}")
+    return wrapper
+
+
+def login_view(request):
+    u = request.user
+    if u.is_authenticated and u.is_active and u.is_superuser:
+        return redirect("/admin/panel/")
+
+    nxt = request.POST.get("next") or request.GET.get("next") or "/admin/panel/"
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
+        nxt = "/admin/panel/"
+
+    error = ""
+    if request.method == "POST":
+        key = f"mp:rl:adminlogin:{client_ip(request)}"
+        if store.rate_get_sync(key) >= LOGIN_MAX_FAILS:
+            error = "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring."
+        else:
+            user = authenticate(request,
+                                username=(request.POST.get("username") or "").strip(),
+                                password=request.POST.get("password") or "")
+            if user is not None and user.is_active and user.is_superuser:
+                store.key_delete_sync(key)
+                login(request, user)
+                ModerationLog.objects.create(admin=user.username, action="login",
+                                             detail={"ip": client_ip(request)})
+                return redirect(nxt)
+            store.rate_hit_sync(key, LOGIN_WINDOW_SEC)
+            # Sababini aytmaymiz: "parol xato" / "superuser emas" farqi sizib chiqmasin
+            error = "Login yoki parol noto'g'ri."
+
+    resp = render(request, "admin/login.html", {"error": error, "next": nxt})
+    resp["Cache-Control"] = "no-store"
+    return resp
+
+
+@require_POST
+def logout_view(request):
+    logout(request)
+    return redirect(LOGIN_PATH)
 
 
 def _body(request) -> dict:
@@ -46,15 +114,17 @@ def _int(data, key, lo, hi, default=None):
 # --------------------------------------------------------------------------
 # Sahifa
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 def panel(request):
-    return render(request, "admin/panel.html", {"user": request.user})
+    resp = render(request, "admin/panel.html", {"user": request.user})
+    resp["Cache-Control"] = "no-store"
+    return resp
 
 
 # --------------------------------------------------------------------------
 # Statistika
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def stats(request):
     from . import timelapse as tl
@@ -85,13 +155,41 @@ def stats(request):
         "timelapse_on": tl.is_enabled(),
         "process_online": online_now(),
         "process_cooldown_ms": cooldown_now(),
+        "readonly": sitemod.get_settings().readonly,
     })
+
+
+@superuser_required
+@require_GET
+def series(request):
+    """Grafiklar uchun: oxirgi 24 soat (soatma-soat) va 14 kunlik yangi foydalanuvchilar."""
+    now = timezone.now()
+    start_h = (now - timedelta(hours=23)).replace(minute=0, second=0, microsecond=0)
+    hours = {r["h"]: r["n"] for r in
+             PixelEvent.objects.filter(created_at__gte=start_h)
+             .annotate(h=TruncHour("created_at")).values("h")
+             .annotate(n=Count("id"))}
+    hourly = []
+    for i in range(24):
+        h = start_h + timedelta(hours=i)
+        hourly.append({"t": h.isoformat(), "n": hours.get(h, 0)})
+
+    start_d = (now - timedelta(days=13)).date()
+    days = {r["d"]: r["n"] for r in
+            Player.objects.filter(created_at__date__gte=start_d)
+            .annotate(d=TruncDate("created_at")).values("d")
+            .annotate(n=Count("id"))}
+    daily = []
+    for i in range(14):
+        d = start_d + timedelta(days=i)
+        daily.append({"t": d.isoformat(), "n": days.get(d, 0)})
+    return JsonResponse({"hourly": hourly, "daily": daily})
 
 
 # --------------------------------------------------------------------------
 # Shikoyatlar
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def reports(request):
     status = request.GET.get("status", Report.NEW)
@@ -106,7 +204,7 @@ def reports(request):
     } for r in qs]})
 
 
-@staff_member_required
+@superuser_required
 @require_POST
 def report_status(request):
     data = _body(request)
@@ -123,7 +221,7 @@ def report_status(request):
 # --------------------------------------------------------------------------
 # Piksel tarixi — "bu yerga kim qo'ygan"
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def pixel_history(request):
     try:
@@ -143,7 +241,7 @@ def pixel_history(request):
     } for e in qs]})
 
 
-@staff_member_required
+@superuser_required
 @require_GET
 def region_authors(request):
     """Hududda kim ko'p bo'yagan — ommaviy vandalizmda kerak bo'ladi."""
@@ -176,7 +274,7 @@ def region_authors(request):
 # --------------------------------------------------------------------------
 # Rollback
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_POST
 def rollback(request):
     data = _body(request)
@@ -196,7 +294,7 @@ def rollback(request):
 # --------------------------------------------------------------------------
 # Foydalanuvchilar / ban
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def players(request):
     q = (request.GET.get("q") or "").strip()
@@ -216,7 +314,7 @@ def players(request):
     } for p in qs]})
 
 
-@staff_member_required
+@superuser_required
 @require_POST
 def ban(request):
     data = _body(request)
@@ -230,7 +328,7 @@ def ban(request):
     return JsonResponse({"ok": True, "banned": True})
 
 
-@staff_member_required
+@superuser_required
 @require_POST
 def unban(request):
     data = _body(request)
@@ -244,7 +342,7 @@ def unban(request):
 # --------------------------------------------------------------------------
 # Timelapse — doska suratlari
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def timelapse_list(request):
     from . import timelapse as tl
@@ -277,7 +375,7 @@ def timelapse_list(request):
     })
 
 
-@staff_member_required
+@superuser_required
 @require_POST
 def timelapse_toggle(request):
     from . import timelapse as tl
@@ -292,7 +390,7 @@ def timelapse_toggle(request):
     return JsonResponse({"ok": True, "enabled": on})
 
 
-@staff_member_required
+@superuser_required
 @require_POST
 def timelapse_shoot(request):
     """Hoziroq bitta surat olish."""
@@ -308,9 +406,9 @@ def timelapse_shoot(request):
 
 
 # --------------------------------------------------------------------------
-# Jamoalar
+# Jamoalar / jurnal
 # --------------------------------------------------------------------------
-@staff_member_required
+@superuser_required
 @require_GET
 def teams(request):
     rows = (Team.objects.annotate(n=Count("members"))
@@ -323,7 +421,7 @@ def teams(request):
     } for t in rows]})
 
 
-@staff_member_required
+@superuser_required
 @require_GET
 def logs(request):
     qs = ModerationLog.objects.order_by("-created_at")[:100]
@@ -331,3 +429,224 @@ def logs(request):
         "admin": m.admin, "action": m.action, "detail": m.detail,
         "created_at": m.created_at.isoformat(),
     } for m in qs]})
+
+
+# --------------------------------------------------------------------------
+# Sayt sozlamalari + SEO
+# --------------------------------------------------------------------------
+_TEXT_FIELDS = {          # nom -> (max uzunlik)
+    "site_name": 60, "seo_title": 70, "seo_description": 320,
+    "seo_keywords": 255, "seo_text": 4000, "twitter": 40, "locale": 10,
+    "google_verification": 120, "yandex_verification": 120,
+    "announcement": 200,
+}
+_BOOL_FIELDS = ("robots_index", "announcement_on", "readonly")
+_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_VERIFY_RE = re.compile(r"^[A-Za-z0-9_\-]*$")
+
+
+def _site_dict(s: SiteSettings) -> dict:
+    d = {f: getattr(s, f) for f in (*_TEXT_FIELDS, *_BOOL_FIELDS, "public_url",
+                                    "og_image", "favicon", "theme_color")}
+    d["updated_at"] = s.updated_at.isoformat()
+    return d
+
+
+@superuser_required
+@require_GET
+def site_get(request):
+    return JsonResponse(_site_dict(SiteSettings.load()))
+
+
+def _clean_asset(v: str) -> str:
+    """Rasm manzili: bo'sh, /media/... yoki to'liq https:// manzil."""
+    v = (v or "").strip()
+    if v and not (v.startswith("/media/") or re.match(r"^https?://\S+$", v)):
+        raise ValueError("Rasm manzili /media/... yoki https://... bo'lsin")
+    return v[:255]
+
+
+@superuser_required
+@require_POST
+def site_save(request):
+    data = _body(request)
+    s = SiteSettings.load()
+    changed = []
+    try:
+        for f, mx in _TEXT_FIELDS.items():
+            if f in data:
+                v = str(data[f] or "").strip()
+                if len(v) > mx:
+                    raise ValueError(f"«{f}» juda uzun (eng ko'pi {mx} belgi)")
+                if f in ("google_verification", "yandex_verification") \
+                        and not _VERIFY_RE.match(v):
+                    raise ValueError("Tasdiqlash kodida faqat harf, raqam, - va _ bo'lsin")
+                if f in ("site_name", "seo_title") and not v:
+                    raise ValueError("Nom va sarlavha bo'sh bo'lmasin")
+                setattr(s, f, v)
+                changed.append(f)
+        for f in _BOOL_FIELDS:
+            if f in data:
+                setattr(s, f, bool(data[f]))
+                changed.append(f)
+        if "public_url" in data:
+            v = str(data["public_url"] or "").strip().rstrip("/")
+            if v and not re.match(r"^https?://[^\s/]+$", v):
+                raise ValueError("Asosiy manzil: https://domen.uz ko'rinishida (yo'lsiz)")
+            s.public_url = v
+            changed.append("public_url")
+        for f in ("og_image", "favicon"):
+            if f in data:
+                setattr(s, f, _clean_asset(data[f]))
+                changed.append(f)
+        if "theme_color" in data:
+            v = str(data["theme_color"] or "").strip()
+            if not _COLOR_RE.match(v):
+                raise ValueError("Rang #RRGGBB ko'rinishida bo'lsin")
+            s.theme_color = v
+            changed.append("theme_color")
+    except ValueError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+    s.save()
+    sitemod.invalidate()
+    sitemod.mirror_readonly(s.readonly)
+    ModerationLog.objects.create(admin=request.user.username, action="site",
+                                 detail={"fields": changed})
+    return JsonResponse({"ok": True, **_site_dict(s)})
+
+
+# --------------------------------------------------------------------------
+# Fayllar
+# --------------------------------------------------------------------------
+MAX_UPLOAD = 5 * 1024 * 1024
+MAX_SIDE = 8000
+_IMAGE_EXT = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+              "gif": "image/gif", "webp": "image/webp", "ico": "image/x-icon"}
+_OTHER_EXT = {"pdf": "application/pdf", "txt": "text/plain"}
+# SVG ataylab yo'q: u ichida skript bo'lishi mumkin va bir domenda ochilsa XSS beradi.
+
+
+def _file_dict(f: UploadedFile, s: SiteSettings) -> dict:
+    url = f.file.url
+    return {
+        "id": f.id, "name": f.name, "url": url, "type": f.content_type,
+        "size": f.size, "w": f.width, "h": f.height,
+        "is_image": f.content_type.startswith("image/"),
+        "is_og": s.og_image == url, "is_favicon": s.favicon == url,
+        "by": f.uploaded_by, "created_at": f.created_at.isoformat(),
+    }
+
+
+@superuser_required
+@require_GET
+def files_list(request):
+    s = SiteSettings.load()
+    qs = UploadedFile.objects.all()[:200]
+    total = UploadedFile.objects.aggregate(t=Sum("size"))["t"] or 0
+    return JsonResponse({"items": [_file_dict(f, s) for f in qs],
+                         "total_mb": round(total / 1_048_576, 2),
+                         "max_mb": MAX_UPLOAD // 1_048_576,
+                         "allowed": sorted({*_IMAGE_EXT, *_OTHER_EXT})})
+
+
+@superuser_required
+@require_POST
+def file_upload(request):
+    up = request.FILES.get("file")
+    if not up:
+        return JsonResponse({"detail": "Fayl tanlanmagan"}, status=400)
+    if up.size > MAX_UPLOAD:
+        return JsonResponse(
+            {"detail": f"Fayl {MAX_UPLOAD // 1_048_576} MB dan oshmasin"}, status=400)
+
+    name = (up.name or "fayl").replace("\\", "/").rsplit("/", 1)[-1][:200]
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    ctype = _IMAGE_EXT.get(ext) or _OTHER_EXT.get(ext)
+    if not ctype:
+        return JsonResponse({"detail": "Bu fayl turi ruxsat etilmagan. Mumkin: "
+                             + ", ".join(sorted({*_IMAGE_EXT, *_OTHER_EXT}))},
+                            status=400)
+
+    w = h = 0
+    if ext in _IMAGE_EXT:
+        # Kengaytmaga ishonmaymiz: haqiqatan rasm ekanini tekshiramiz
+        from PIL import Image
+        try:
+            with Image.open(up) as im:
+                im.verify()
+            up.seek(0)
+            with Image.open(up) as im:
+                w, h = im.size
+                kind = (im.format or "").lower()
+        except Exception:
+            return JsonResponse({"detail": "Fayl buzuq yoki rasm emas"}, status=400)
+        if kind == "jpeg":
+            kind = "jpg"
+        if (kind != ext) and not (kind == "jpg" and ext == "jpeg") \
+                and not (ext == "ico" and kind in ("ico", "png")):
+            return JsonResponse({"detail": "Fayl mazmuni kengaytmasiga mos emas"},
+                                status=400)
+        if w > MAX_SIDE or h > MAX_SIDE:
+            return JsonResponse({"detail": f"Rasm {MAX_SIDE}px dan katta bo'lmasin"},
+                                status=400)
+        up.seek(0)
+
+    obj = UploadedFile(name=name, content_type=ctype, size=up.size, width=w,
+                       height=h, uploaded_by=request.user.username)
+    obj.file.save(name, up, save=True)
+    ModerationLog.objects.create(admin=request.user.username, action="upload",
+                                 detail={"name": name, "size": up.size})
+    return JsonResponse({"ok": True, **_file_dict(obj, SiteSettings.load())})
+
+
+@superuser_required
+@require_POST
+def file_delete(request):
+    data = _body(request)
+    obj = UploadedFile.objects.filter(id=data.get("id")).first()
+    if not obj:
+        raise Http404("Fayl topilmadi")
+    url = obj.file.url
+    s = SiteSettings.load()
+    fields = []
+    if s.og_image == url:
+        s.og_image = ""
+        fields.append("og_image")
+    if s.favicon == url:
+        s.favicon = ""
+        fields.append("favicon")
+    if fields:
+        s.save(update_fields=fields + ["updated_at"])
+        sitemod.invalidate()
+    name = obj.name
+    obj.file.delete(save=False)
+    obj.delete()
+    ModerationLog.objects.create(admin=request.user.username, action="file-delete",
+                                 detail={"name": name})
+    return JsonResponse({"ok": True})
+
+
+# --------------------------------------------------------------------------
+# Hisob: parolni almashtirish
+# --------------------------------------------------------------------------
+@superuser_required
+@require_POST
+def password_change(request):
+    data = _body(request)
+    old, new = data.get("old") or "", data.get("new") or ""
+    user = request.user
+    if not user.check_password(old):
+        return JsonResponse({"detail": "Joriy parol noto'g'ri"}, status=400)
+    if len(new) < 10:
+        return JsonResponse({"detail": "Yangi parol kamida 10 belgi bo'lsin"},
+                            status=400)
+    if new == old:
+        return JsonResponse({"detail": "Yangi parol eskisidan farq qilsin"},
+                            status=400)
+    user.set_password(new)
+    user.save(update_fields=["password"])
+    update_session_auth_hash(request, user)       # joriy sessiya uzilmasin
+    ModerationLog.objects.create(admin=user.username, action="password",
+                                 detail={"ip": client_ip(request)})
+    return JsonResponse({"ok": True})

@@ -117,6 +117,13 @@ STORAGES = {
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Admin panel sessiyasi: 12 soat, brauzer yopilganda ham saqlanadi.
+SESSION_COOKIE_AGE = 12 * 3600
+SESSION_COOKIE_HTTPONLY = True
+LOGIN_URL = "/admin/panel/login/"
+# Yuklanadigan fayllar RAMga sig'masa diskka tushadi; hajm chegarasi adminpanel.py da.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+
 # ---------------------------------------------------------------- loyiha
 REDIS_URL = env("REDIS_URL", "redis://127.0.0.1:6379/0")
 

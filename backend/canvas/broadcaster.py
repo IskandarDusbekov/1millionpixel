@@ -45,7 +45,13 @@ MSG_RELOAD = 0x05       # snapshot'ni qayta yuklash (katta rollback'dan keyin)
 MSG_REJECT = 0x06       # optimistik bo'yashni bekor qilish
 
 DRAIN_LIMIT = 4096          # bitta paketdagi maksimal piksel
-_online_state = {"n": 0, "cd": cooldown_ms(0)}
+_online_state = {"n": 0, "cd": cooldown_ms(0), "ro": False}
+
+
+def readonly_now() -> bool:
+    """"Faqat ko'rish" rejimi. Redis'dan online_loop har 2 soniyada yangilaydi,
+    shuning uchun bo'yash yo'lida qo'shimcha so'rov yo'q."""
+    return _online_state["ro"]
 
 
 def online_now() -> int:
@@ -156,6 +162,7 @@ async def online_loop() -> None:
         try:
             now = int(time.time() * 1000)
             await refresh_presence(now)
+            _online_state["ro"] = await store.is_readonly()
 
             # SET NX — faqat bitta protsess sanaydi, qolganlari pub/sub'dan oladi
             got = await r.set("mp:lock:online", b"1", nx=True, px=lock_ttl)

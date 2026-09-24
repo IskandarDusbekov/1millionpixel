@@ -1,7 +1,7 @@
 /* Million Piksel — backend ulagichi.
  *
- * index.html mustaqil ishlaydi (demo rejim). Bu fayl unga ulanib,
- * demo o'rniga haqiqiy serverni qo'yadi: window.MP orqali.
+ * index.html doskani chizadi va foydalanuvchi bilan gaplashadi; bu fayl
+ * unga serverni ulaydi (window.MP orqali): kirish, snapshot, WebSocket.
  *
  * Django uni avtomatik qo'shadi (config/urls.py -> app_view).
  */
@@ -52,7 +52,8 @@
       return post('/api/auth/telegram', { init_data: tg.initData, ref: ref });
     }
 
-    var saved = localStorage.getItem('mp_token');
+    var saved = null;
+    try { saved = localStorage.getItem('mp_token'); } catch (e) {}
     if (saved) return Promise.resolve({ token: saved });
 
     return showLoginScreen(ref);
@@ -99,18 +100,25 @@
     box(6, 33, 49, 33, 3);           // soya
   }
 
-  /* Oddiy brauzer — bu yerdan chizib bo'lmaydi, Telegram'ga yo'naltiramiz.
+  function fmtTime(sec) {
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  /* Oddiy brauzer uchun kirish oynasi.
    *
-   * Yagona kirish yo'li Telegram Mini App: imzo bot tokeni bilan
-   * tekshiriladi, ya'ni soxta hisob ochish qimmatga tushadi. Shuning
-   * uchun bu ekran kirish emas — havola beradi. Promise ataylab hech
-   * qachon hal bo'lmaydi: doska orqada ko'rinib turadi, lekin chizib
-   * bo'lmaydi.
+   * Ikki yo'l, ikkalasida ham Telegram hisobi tekshiriladi (soxta hisob
+   * ochish qimmatga tushadi):
+   *   1) Mini App — bir bosishda, hech narsa tasdiqlash shart emas;
+   *   2) Bot orqali — brauzer kod oladi, foydalanuvchi uni botda TASDIQLAYDI,
+   *      brauzer natijani so'rab turadi.
+   * Promise kirish tugagach hal bo'ladi; shu paytgacha doska orqada
+   * ko'rinib turadi, lekin chizib bo'lmaydi.
    */
   function showLoginScreen(ref) {
-    return new Promise(function () {
+    return new Promise(function (resolve) {
       var bot = CFG.bot_username || '';
-      var link = bot
+      var appLink = bot
         ? 'https://t.me/' + bot + '/app' + (ref ? '?startapp=' + ref : '')
         : '';
 
@@ -119,15 +127,25 @@
       box.innerHTML =
         '<div class="mp-login-card">' +
           '<canvas id="mp-art" aria-hidden="true"></canvas>' +
-          '<h2>Million Piksel</h2>' +
-          '<p>1 000 000 piksellik umumiy doska. Chizish uchun ilovani ' +
-          'Telegram orqali oching — kirish avtomatik bo‘ladi.</p>' +
-          (link
-            ? '<a class="mp-tg" href="' + link + '">Telegramda ochish</a>'
+          '<h2>' + (CFG.site_name || 'Million Piksel') + '</h2>' +
+          '<p id="mp-lead">1 000 000 piksellik umumiy doska. Chizish uchun ' +
+          'Telegram hisobingiz bilan kiring — bir necha soniya.</p>' +
+          (bot
+            ? '<button class="mp-tg" id="mp-botbtn" type="button">' +
+                'Telegram bot orqali kirish</button>' +
+              '<div id="mp-wait" hidden>' +
+                '<div class="mp-spin" aria-hidden="true"></div>' +
+                '<div id="mp-waittxt">Telegramda «Tasdiqlayman» tugmasini bosing</div>' +
+                '<a class="mp-tg mp-alt" id="mp-open" target="_blank" ' +
+                  'rel="noopener" href="#">Telegramni ochish</a>' +
+                '<button class="mp-link" id="mp-cancel" type="button">Bekor qilish</button>' +
+              '</div>' +
+              '<a class="mp-link" id="mp-app" href="' + appLink + '">' +
+                'yoki Mini App sifatida ochish</a>'
             : '<span class="mp-warn">Bot hali sozlanmagan ' +
               '(TELEGRAM_BOT_USERNAME)</span>') +
           '<p class="mp-login-note">Doskani shu yerdan kuzatishingiz ' +
-          'mumkin, lekin piksel qo‘yish faqat Telegramda.</p>' +
+          'mumkin, chizish uchun kirish kerak.</p>' +
         '</div>';
       document.body.appendChild(box);
 
@@ -141,7 +159,7 @@
         'background:var(--bg);opacity:.72}' +
         '.mp-login-card{position:relative;z-index:1;background:var(--panel);' +
         'border:1px solid var(--line);' +
-        'border-radius:var(--rp);padding:24px 22px 26px;max-width:340px;' +
+        'border-radius:var(--rp);padding:24px 22px 22px;max-width:340px;' +
         'width:100%;text-align:center;}' +
         '#mp-art{width:224px;max-width:100%;height:auto;' +
         'aspect-ratio:56/40;image-rendering:pixelated;display:block;' +
@@ -150,13 +168,86 @@
         '.mp-login-card p{margin:0 0 18px;color:var(--muted);font-size:13px;' +
         'line-height:1.5}' +
         '.mp-login-note{margin:16px 0 0 !important;font-size:11px}' +
-        '.mp-tg{display:block;padding:11px 14px;border-radius:var(--r);' +
-        'background:var(--accent);color:#fff;text-decoration:none;' +
-        'font-weight:600;font-size:14px}' +
+        '.mp-tg{display:block;width:100%;padding:12px 14px;border-radius:var(--r);' +
+        'border:0;background:var(--accent);color:var(--accent-fg,#fff);' +
+        'text-decoration:none;font:inherit;font-weight:600;font-size:14px;cursor:pointer}' +
+        '.mp-tg.mp-alt{background:transparent;color:var(--text);' +
+        'border:1px solid var(--line);margin-top:12px;font-weight:500}' +
+        '.mp-link{display:block;margin:12px auto 0;background:none;border:0;' +
+        'color:var(--muted);font:inherit;font-size:12px;cursor:pointer;' +
+        'text-decoration:underline}' +
+        '#mp-wait{color:var(--text);font-size:13px;line-height:1.5}' +
+        '#mp-wait[hidden]{display:none}' +
+        '.mp-spin{width:26px;height:26px;margin:2px auto 10px;border-radius:50%;' +
+        'border:3px solid var(--line);border-top-color:var(--accent);' +
+        'animation:mpspin 1s linear infinite}' +
+        '@keyframes mpspin{to{transform:rotate(360deg)}}' +
         '.mp-warn{display:block;font-size:11px;color:var(--muted)}';
       document.head.appendChild(css);
 
       drawLaptop(document.getElementById('mp-art'));
+      if (!bot) return;
+
+      var btn = document.getElementById('mp-botbtn');
+      var wait = document.getElementById('mp-wait');
+      var waitTxt = document.getElementById('mp-waittxt');
+      var openA = document.getElementById('mp-open');
+      var appA = document.getElementById('mp-app');
+      var timer = null, tick = null, active = false, ttl = 0;
+
+      function stop() {
+        active = false;
+        clearInterval(timer); clearInterval(tick);
+        wait.hidden = true; btn.hidden = false; appA.hidden = false;
+      }
+      function fail(msg) {
+        stop();
+        document.getElementById('mp-lead').textContent = msg;
+      }
+
+      document.getElementById('mp-cancel').onclick = stop;
+
+      btn.onclick = function () {
+        btn.disabled = true;
+        post('/api/auth/bot/start', {}).then(function (s) {
+          btn.disabled = false;
+          active = true; ttl = s.expires;
+          btn.hidden = true; appA.hidden = true; wait.hidden = false;
+          openA.href = s.link;
+          // Ko'p brauzerlar bu yerda oynani ochadi; bloklansa — pastdagi tugma bor
+          try { window.open(s.link, '_blank', 'noopener'); } catch (e) {}
+
+          tick = setInterval(function () {
+            ttl--;
+            waitTxt.textContent = 'Telegramda «Tasdiqlayman» tugmasini bosing · ' + fmtTime(Math.max(0, ttl));
+            if (ttl <= 0) fail('Vaqt tugadi. Qayta urinib ko‘ring.');
+          }, 1000);
+
+          timer = setInterval(function () {
+            if (!active) return;
+            var q = '/api/auth/bot/poll?code=' + encodeURIComponent(s.code) +
+                    (ref ? '&ref=' + encodeURIComponent(ref) : '');
+            fetch(q, { cache: 'no-store' })
+              .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+              .then(function (r) {
+                if (!active) return;
+                if (!r.ok) { fail(r.j.detail || 'Kirishda xatolik'); return; }
+                if (r.j.status === 'expired') { fail('Havola eskirdi. Qayta urinib ko‘ring.'); return; }
+                if (r.j.status === 'ok') {
+                  active = false; stop();
+                  box.remove(); css.remove();
+                  resolve(r.j);
+                }
+              })
+              .catch(function () { /* tarmoq xatosi — keyingi urinishda */ });
+          }, 2000);
+        }).catch(function (err) {
+          btn.disabled = false;
+          fail(String(err.message || '').indexOf('429') >= 0
+            ? 'Juda ko‘p urinish. Bir daqiqadan keyin qayta urinib ko‘ring.'
+            : 'Botga ulanib bo‘lmadi. Birozdan keyin urinib ko‘ring.');
+        });
+      };
     });
   }
 
@@ -248,8 +339,13 @@
     };
 
     ws.onclose = function (e) {
-      if (e.code === 4001) { localStorage.removeItem('mp_token');
-                             MP.toast('Qaytadan kiring'); return; }
+      if (e.code === 4001) {
+        // Token eskirgan: o'chirib, sahifani qayta ochamiz — kirish oynasi chiqadi
+        try { localStorage.removeItem('mp_token'); } catch (err) {}
+        MP.toast('Sessiya tugadi, qaytadan kiring');
+        setTimeout(function () { location.reload(); }, 1200);
+        return;
+      }
       if (e.code === 4003) { MP.toast('Hisobingiz bloklangan'); return; }
       if (e.code === 4029) { MP.toast('Juda tez — biroz sekinlashtiring'); }
 
@@ -282,6 +378,18 @@
     if (ws && ws.readyState === 1) ws.send(new Uint8Array([OP_PING]).buffer);
   }, 20000);
 
+  /* ------------------------------------- 5. E'lon va "faqat ko'rish" holati */
+  function refreshSite() {
+    fetch('/api/site', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { MP.setSite(s); })
+      .catch(function () {});
+  }
+  setInterval(refreshSite, 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshSite();
+  });
+
   /* ------------------------------------------------------------- start
    * Snapshot AVVAL yuklanadi (u ochiq endpoint) — shunda kirish ekrani
    * orqasida haqiqiy foydalanuvchilar chizgan doska ko'rinib turadi.
@@ -293,10 +401,16 @@
     .then(function (res) {
       token = res.token;
       window.MP_TOKEN = token;        // onboarding.js /api/me uchun ishlatadi
-      localStorage.setItem('mp_token', token);
-      MP.fit();       // kirgandan keyin butun doska ko'rinadi
+      try { localStorage.setItem('mp_token', token); } catch (e) {}
+      MP.fit();       // kirgandan keyin butun doska (yoki havoladagi joy) ko'rinadi
       connect();      // yangi snapshot'ni onopen o'zi yuklaydi
       if (MP.maybeShowIntro) MP.maybeShowIntro();
+
+      // Yutuqlar (1, 10, 100-piksel...) serverdagi jami songa tayanadi
+      fetch('/api/me', { headers: { Authorization: 'Bearer ' + token } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (me) { if (me) MP.setPainted(me.pixels); })
+        .catch(function () {});
     })
     .catch(function (err) {
       console.error(err);

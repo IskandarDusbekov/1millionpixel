@@ -160,6 +160,89 @@ class Snapshot(models.Model):
         return f"{self.created_at:%Y-%m-%d %H:%M:%S} — {self.fill_percent:.1f}%"
 
 
+class SiteSettings(models.Model):
+    """Sayt sozlamalari — yagona qator (pk=1). Admin paneldan tahrirlanadi.
+
+    SEO maydonlari `/` sahifasining <head> qismiga server tomonda yoziladi
+    (config/urls.py -> canvas/site.py), shuning uchun qidiruv robotlari
+    JavaScript ishlatmasdan ham ularni ko'radi.
+    """
+
+    # --- SEO ---
+    site_name = models.CharField(max_length=60, default="Million Piksel")
+    seo_title = models.CharField(
+        max_length=70, default="Million Piksel — 1 000 000 pikselli umumiy doska")
+    seo_description = models.CharField(
+        max_length=320,
+        default="Do'stlar bilan birga 1000×1000 umumiy doskada rasm chizing. "
+                "Har bir piksel joyida qoladi. Telegram orqali kiring.")
+    seo_keywords = models.CharField(
+        max_length=255, blank=True,
+        default="million piksel, pixel art, r/place, umumiy doska, telegram o'yin")
+    seo_text = models.TextField(
+        blank=True,
+        help_text="Qidiruv robotlari o'qiydigan qisqa matn (saytda ko'rinmaydi).")
+    public_url = models.URLField(
+        blank=True, help_text="Asosiy manzil, masalan https://millionpixel.uz")
+    og_image = models.CharField(max_length=255, blank=True)   # /media/... yoki URL
+    favicon = models.CharField(max_length=255, blank=True)
+    theme_color = models.CharField(max_length=9, default="#1E7F86")
+    twitter = models.CharField(max_length=40, blank=True)      # @siz_bilan
+    locale = models.CharField(max_length=10, default="uz")
+    robots_index = models.BooleanField(default=True)
+    google_verification = models.CharField(max_length=120, blank=True)
+    yandex_verification = models.CharField(max_length=120, blank=True)
+
+    # --- Sayt holati ---
+    announcement = models.CharField(max_length=200, blank=True)
+    announcement_on = models.BooleanField(default=False)
+    readonly = models.BooleanField(
+        default=False, help_text="Faqat ko'rish rejimi: hech kim piksel qo'ya olmaydi.")
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Sayt sozlamalari"
+        verbose_name_plural = "Sayt sozlamalari"
+
+    def __str__(self):
+        return "Sayt sozlamalari"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> "SiteSettings":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+def _upload_path(instance, filename: str) -> str:
+    """Fayl nomi tasodifiy: foydalanuvchi bergan nom yo'l sifatida ishlatilmaydi."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"uploads/{secrets.token_hex(8)}.{ext}"
+
+
+class UploadedFile(models.Model):
+    """Admin panel orqali yuklangan fayl (OG rasm, favicon va h.k.)."""
+
+    file = models.FileField(upload_to=_upload_path)
+    name = models.CharField(max_length=200)
+    content_type = models.CharField(max_length=100, blank=True)
+    size = models.IntegerField(default=0)
+    width = models.IntegerField(default=0)
+    height = models.IntegerField(default=0)
+    uploaded_by = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return self.name
+
+
 class ModerationLog(models.Model):
     """Admin nima qilgani — kimni ban qilgan, qaysi hududni qaytargan."""
 

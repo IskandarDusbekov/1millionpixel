@@ -11,8 +11,9 @@ Django + Channels + Redis + PostgreSQL, frontend esa bitta HTML fayl
 ```
 1millionpixel/
 ├── frontend/
-│   ├── index.html          # BUTUN frontend: HTML + CSS + JS (mustaqil ishlaydi)
-│   └── connect.js          # backend ulagichi (WebSocket + auth + snapshot)
+│   ├── index.html          # BUTUN frontend: HTML + CSS + JS (kanvas, effektlar, zoom)
+│   ├── connect.js          # backend ulagichi (kirish, bot orqali kirish, WebSocket, snapshot)
+│   └── onboarding.js       # tanishtiruv va do'stlar oynasi
 ├── backend/
 │   ├── manage.py
 │   ├── requirements.txt
@@ -26,20 +27,23 @@ Django + Channels + Redis + PostgreSQL, frontend esa bitta HTML fayl
 │   │   ├── broadcaster.py  # BATCHING + pub/sub fan-out (high-load yuragi)
 │   │   ├── consumers.py    # WebSocket (issiq yo'l, DB'ga tegmaydi)
 │   │   ├── auth.py         # Telegram initData tekshiruvi / JWT
-│   │   ├── api.py          # HTTP API (Django Ninja) + /api/canvas.bin
-│   │   ├── models.py       # Player, PixelEvent, Report, ModerationLog
+│   │   ├── api.py          # HTTP API (Django Ninja) + bot orqali kirish + /api/canvas.bin
+│   │   ├── models.py       # Player, PixelEvent, Report, SiteSettings, UploadedFile, ...
+│   │   ├── site.py         # SEO <head>, robots.txt, sitemap.xml, manifest, ikonkalar
 │   │   ├── moderation.py   # rollback va ban
 │   │   ├── admin.py        # Django admin ro'yxatlari
-│   │   ├── adminpanel.py   # MODERATSIYA PANELI (staff + CSRF)
+│   │   ├── adminpanel.py   # ADMIN PANEL (faqat superuser + CSRF)
 │   │   └── management/commands/
 │   │       ├── drain_history.py   # Redis Stream -> PostgreSQL
-│   │       └── telegram_bot.py    # Mini App tugmasi va /start
+│   │       └── telegram_bot.py    # Mini App tugmasi, /start, brauzer kirishini tasdiqlash
 │   └── templates/admin/
-│       ├── panel.html      # moderatsiya paneli (jonli kanvas)
+│       ├── login.html      # panel kirish sahifasi (login + parol)
+│       ├── panel.html      # boshqaruv paneli (sidebar, SEO, fayllar, kanvas, ...)
 │       ├── rollback.html   # oddiy rollback formasi
-│       └── mp_index.html   # admin bosh sahifasiga havola
+│       └── mp_index.html   # Django admin bosh sahifasi
 ├── deploy/
-│   └── nginx.conf          # gzip, WebSocket, rate limit
+│   ├── nginx.conf          # gzip, WebSocket, rate limit, fayl yuklash
+│   └── nginx-host.conf     # serverda nginx allaqachon bo'lsa
 ├── Dockerfile
 ├── docker-compose.yml       # redis + postgres + web + history
 ├── docker-compose.prod.yml  # + nginx + certbot + bot
@@ -159,9 +163,11 @@ Binar format JSON'dan ~10 barobar kichik: bitta piksel 5 bayt
 
 ## Frontend
 
-`frontend/index.html` — bitta fayl, tashqi kutubxonasiz, o'zi ham ishlaydi
-(demo rejim). Django uni uzatayotganda `DEMO = false` qilib, `connect.js` ni
-qo'shadi.
+`frontend/index.html` — bitta fayl, tashqi kutubxonasiz. Django uni uzatayotganda
+`<head>` ga admin paneldagi SEO ma'lumotlarini (`<!--MP:SEO-->`), sozlamalarni
+(`<!--MP:CONFIG-->`) va robotlar uchun matnni (`<!--MP:SEOBODY-->`) yozadi,
+so'ng `onboarding.js` va `connect.js` ni qo'shadi. Demo rejim yo'q: fayl
+backendsiz ishlamaydi.
 
 **Nega Pixi.js kerak emas:** doska `Uint8Array(1 000 000)` da (1 MB) va
 1000×1000 offscreen canvas'da turadi. Ekranga chizish — har kadrga **bitta**
@@ -172,20 +178,55 @@ DOM elementi; bu yerda ikkalasi ham yo'q.
 
 Boshqaruv:
 
-- **Bosish = darhol bo'yash** (tasdiqlash bosqichi yo'q).
-- 6 pikseldan ko'p surilsa — bo'yash emas, surish (`DRAG_SLOP`).
-- Zoom har doim nuqtaga bog'langan: `clampScale()` va `clampPan()` **alohida**
-  funksiyalar. Aralashtirilsa, zoom paytida rasm siljib ketadi — `zoomAt()`
-  dagi tartib shuning uchun muhim: global koordinata → masshtabni cheklash →
-  `ox/oy` ni qayta hisoblash.
-- Pinch-to-zoom, ikki marta bosib yaqinlashtirish, `+`/`−` (oxirgi katakni
-  markazda ushlaydi), strelka tugmalari bilan surish.
-- Min zoom — butun doska ko'rinadi, max zoom — 1 piksel ≈ 36 px.
+- **Bosish = darhol bo'yash** (tasdiqlash bosqichi yo'q). Doskada allaqachon
+  shu rang bo'lsa, bo'yoq sarflanmaydi.
+- **Tez chizish.** Pastdagi qalam tugmasi (yoki `D`) — «chizish rejimi»:
+  barmoqni/sichqonchani sudrab chizasiz, oraliq kataklar Bresenham chizig'i
+  bilan to'ldiriladi va `STROKE_MS` (38 ms) oralig'ida navbat bilan
+  bo'yaladi (server chegarasiga urilmaslik uchun). Chizish rejimida ikki
+  barmoq — surish/zoom. Kompyuterda `Shift` + sudrash ham chizadi.
+- **Rang olish** (pipetka): tugma, o'ng tugma yoki `Alt` + bosish. `[` / `]` —
+  oldingi/keyingi rang.
+- Juda uzoqdan (`ZOOM_ASSIST`) bosish bo'yamaydi, o'sha joyga yaqinlashtiradi —
+  xato piksel bo'yoqni yemasin.
+- 6 pikseldan ko'p surilsa — bo'yash emas, surish (`DRAG_SLOP`); qo'yib
+  yuborilganda inersiya bilan sirpanadi.
+- **Silliq zoom.** G'ildirak maqsad masshtabga eksponensial yaqinlashadi
+  (kursor ostidagi katak joyida qoladi), tugmalar va «butun doska» — 200–380 ms
+  animatsiya (masshtab logarifmik, markaz chiziqli), trekpad chimchilashi
+  (`ctrl+wheel`) va pinch qo'llanadi. Max zoom — 1 piksel ≈ 64 px.
+- `clampScale()` va `clampPan()` **alohida** funksiyalar. Aralashtirilsa, zoom
+  paytida rasm siljib ketadi.
+- Klaviatura: strelkalar — surish, `+`/`−` — zoom, `0` — butun doska,
+  `D` — chizish rejimi, `M` — ovoz.
 - Yorug'/qorong'i rejim `prefers-color-scheme` orqali, `prefers-reduced-motion`
-  hurmat qilinadi, barcha tugmalarda `aria-label` va `:focus-visible`.
+  hurmat qilinadi (zarralar va animatsiyalar o'chadi), barcha tugmalarda
+  `aria-label` va `:focus-visible`.
+- Havola: `/#x,y,zoom` — ochilganda o'sha joyga uchadi. «Ulashish» tugmasi
+  shu havolani yasaydi; «Saqlash» tugmasi doskani PNG qiladi.
 
-Sozlash uchun fayl boshidagi konstantalar: `N`, `MAX_E`, `MAX_SCALE`,
-`DRAG_SLOP`, `GRID_FROM`, `DEMO`, `TAP_ZOOM_BELOW`.
+### Bo'yash effektlari va psixologik dizayn
+
+Har bir harakat darhol **javob** qaytaradi — bu foydalanuvchini "qayta
+bo'yash"ga undaydi (neyro-lingvistik/xulq-atvor dizayni tamoyillari):
+
+- **Pop + to'lqin + zarralar.** Bo'yalgan katak "sakrab" o'sadi, atrofida
+  halqa tarqaladi, rang zarralari sochiladi (`#fx` alohida qatlam, doska
+  koordinatalarida — surilsa ham joyida qoladi). Boshqalarning piksellari
+  sezilar-sezilmas nur bilan ko'rinadi.
+- **Cho'tka.** Pastda tanlangan rangli doira; uning atrofidagi halqa
+  KEYINGI bo'yoq qachon kelishini ko'rsatadi. Yangi bo'yoq kelganda cho'tka
+  sakraydi, «+1» uchadi, mayin ovoz chalinadi.
+- **Ovoz va titrash.** Pentatonik ovozlar (qanday bosilsa ham uyg'un),
+  Telegram `HapticFeedback` / `navigator.vibrate`. `M` yoki dinamik
+  tugmasi bilan o'chiriladi.
+- **Yutuqlar.** 1, 10, 25, 50, 100, … piksel — iliq tabrik, katta zarralar.
+  Hisob serverdagi jami songa (`/api/me`) tayanadi.
+- **Til.** «Energiya» o'rniga «bo'yoq»; taqiq emas, kutish: «Bo'yoq tiklanmoqda —
+  12 soniyadan keyin yana chizasiz».
+
+Sozlash uchun fayl boshidagi konstantalar: `N`, `MAX_SCALE`, `DRAG_SLOP`,
+`GRID_FROM`, `ZOOM_ASSIST`, `STROKE_MS`.
 
 ### Kirish ekrani (ro'yxatdan o'tmaganlar uchun)
 
@@ -310,30 +351,52 @@ uchun brauzer konsolida: `MP.showIntro()`.
 
 ## Moderatsiya paneli
 
-**`/admin/`** — Django admin bosh sahifasida dashboard: onlayn, kullaut,
-doska to'lishi, piksel/soat, yangi va faol foydalanuvchilar, jamoalar,
-chaqiruvlar, shikoyatlar, banlar. Har 10 soniyada yangilanadi.
+**`/admin/panel/`** — yagona boshqaruv paneli. **Faqat superuser, login va parol
+bilan** (`/admin/panel/login/`; oddiy `is_staff` hisoblar kira olmaydi). Chapda
+sidebar, o'ngda bo'limlar:
 
-**`/admin/panel/`** — moderatsiya paneli. Chap tomonda jonli kanvas
-(zoom, surish), o'ng tomonda oltita bo'lim:
+| Bo'lim | Nima qiladi |
+|---|---|
+| **Bosh sahifa** | onlayn, kullaut, to'lish, piksel/soat, foydalanuvchilar; 24 soatlik va 14 kunlik grafiklar |
+| **Kanvas** | jonli doska; hudud tanlab rollback; katakni bossangiz — kim, qachon, qaysi rangni qo'ygan |
+| **Shikoyatlar** | koordinatani bosish kanvasni o'sha joyga olib boradi; «100×100 · 15 daq» — bitta bosishda qaytarish |
+| **Foydalanuvchilar** | ism/ID bo'yicha qidirish, ban (24 soat / muddatsiz, IP bilan) va bekor qilish |
+| **Jamoalar** | reyting, a'zolar, kod, kapitan |
+| **SEO** | title, description, kalit so'zlar, robotlar uchun matn, asosiy manzil, OG rasm, favicon, brauzer rangi, X akkaunti, Google/Yandex tasdiqlash kodi, indekslashni o'chirish; Google va ulashish kartasi **jonli ko'rinishi** va SEO tekshiruv ro'yxati |
+| **Fayllar** | sudrab tashlab yuklash (jarayon ko'rsatkichi bilan), ro'yxat, URL nusxalash, «OG» / «Favicon» qilib tayinlash, o'chirish |
+| **Sayt holati** | e'lon (saytning yuqorisida hammaga ko'rinadi) va «faqat ko'rish» rejimi (hech kim chiza olmaydi) |
+| **Suratlar** | timelapse kadrlari, to'xtatish/yoqish, hoziroq surat olish |
+| **Jurnal** | har bir admin amali (`ModerationLog`) — kim nima qilgani, kirishlar ham |
+| **Hisob** | parolni almashtirish (eski parol so'raladi, kamida 10 belgi) |
 
-**Shikoyatlar.** Koordinatani bosish kanvasni o'sha joyga olib boradi.
-«100×100 · 15 daq» tugmasi — bitta bosishda atrofdagi hududni qaytaradi.
+`/admin/` (Django admin, model ro'yxatlari) ham faqat superuser uchun va kirish
+sahifasi shu yagona login. Superuser yaratish: `python manage.py createsuperuser`.
 
-**Rollback.** «Hudud tanlash» ni yoqib, kanvasda to'rtburchak chizasiz —
-koordinatalar o'zi to'ladi. «Kim bo'yagan?» shu hududda eng ko'p piksel
-qo'yganlarni chiqaradi, yonida darhol ban tugmalari bilan.
+**Kirish himoyasi:** CSRF, IP bo'yicha 8 ta xatodan keyin 15 daqiqa blok
+(Redis), sessiya 12 soat, xato sababi aytilmaydi ("login yoki parol noto'g'ri"),
+`next` faqat shu sayt ichiga.
 
-**Foydalanuvchi.** Ism yoki ID bo'yicha qidirish, ban (24 soat / muddatsiz,
-IP bilan) va bekor qilish. Kanvasdagi istalgan katakni bossangiz — o'sha
-pikselning tarixi: kim, qachon, qaysi rangni qo'ygan.
+### SEO qanday ishlaydi
 
-**Suratlar.** Timelapse kadrlari, surat olishni to'xtatish/yoqish, hoziroq
-surat olish, video yig'ish buyrug'i.
+Sozlamalar `SiteSettings` (bitta qator) da turadi. Bosh sahifa har so'rovda
+`<head>` ga server tomonda yoziladi (`canvas/site.py`) — qidiruv robotlari
+JavaScriptsiz ham ko'radi: `<title>`, description, canonical, robots,
+Open Graph, Twitter Card, JSON-LD (`WebApplication`), theme-color, PWA
+manifest. Avtomatik yaratiladi: `/robots.txt`, `/sitemap.xml`,
+`/manifest.webmanifest`, `/icon-{32,180,192,512}.png`. Sozlamalar workerlarda
+10 soniyagacha keshlanadi.
 
-**Jamoalar.** Reyting, a'zolar soni, kod, kapitan.
+Yuklanadigan fayllar: png, jpg, gif, webp, ico, pdf, txt; 5 MB gacha; rasmning
+mazmuni Pillow bilan tekshiriladi (kengaytma yolg'on bo'lsa rad); **SVG rad
+etiladi** (ichida skript bo'lishi mumkin); nomi tasodifiy (`/media/uploads/…`).
+Nginx `/admin/panel/api/files/upload` uchun 6 MB ga ruxsat berishi kerak
+(`deploy/nginx*.conf` da bor).
 
-**Jurnal.** Har bir admin amali (`ModerationLog`) — kim nima qilgani.
+### Faqat ko'rish rejimi va e'lon
+
+Panelda yoqilganda bayroq Redis'ga (`mp:readonly`) yoziladi. Har worker uni
+`online_loop` da 2 soniyada bir o'qiydi — ya'ni bo'yash yo'lida qo'shimcha
+Redis so'rovi yo'q. Rad etilgan piksel mijozda avtomatik qaytariladi.
 
 ### Rollback qanday ishlaydi
 
@@ -360,7 +423,7 @@ darhol rad javobini oladi, bazaga bog'lanmasdan.
 `django-ninja` POST'larni `csrf_exempt` qiladi. Sessiya bilan ishlaydigan
 admin endpointi shu holatda CSRF hujumiga ochiq bo'lardi — admin boshqa
 saytdagi formani bosishi bilan hudud o'chib ketishi mumkin edi. Shuning
-uchun panel endpointlari oddiy Django view'lar: `staff_member_required` +
+uchun panel endpointlari oddiy Django view'lar: `superuser_required` +
 `CsrfViewMiddleware`, panel esa `X-CSRFToken` sarlavhasini yuboradi.
 
 ---
@@ -393,8 +456,7 @@ python -m venv .venv
 > Bu rejim faqat sinov uchun: bitta worker, ma'lumot saqlanmaydi.
 > Ishlab chiqarishda ikkala flagni ham `0` qiling.
 
-Faqat frontendni ko'rish uchun backend umuman kerak emas —
-`frontend/index.html` ni brauzerda ochish kifoya (demo rejim).
+Frontend backendsiz ishlamaydi (demo rejim olib tashlangan).
 
 ### Docker
 
@@ -411,17 +473,38 @@ Sayt `http://localhost:8000` · Panel `http://localhost:8000/admin/panel/`
 
 ## Avtorizatsiya
 
-**Yagona kirish yo'li — Telegram Mini App.** Google OAuth ham, parolsiz
-"dasturchi kirishi" ham ataylab olib tashlangan: imzo bot tokeni bilan
-tekshirilgani uchun har bir piksel haqiqiy Telegram hisobiga bog'lanadi
-va soxta hisob ochish qimmatga tushadi.
+**Saytga faqat Telegram hisobi bilan kiriladi** — ikki yo'l bilan. Google OAuth
+ham, parolsiz "dasturchi kirishi" ham ataylab olib tashlangan: har bir piksel
+haqiqiy Telegram hisobiga bog'lanadi va soxta hisob ochish qimmatga tushadi.
+**Admin panelga esa faqat superuser login va paroli bilan** kiriladi (yuqoridagi
+«Moderatsiya paneli»).
 
-Oddiy brauzerda ochilganda foydalanuvchi doskani ko'radi, lekin chiza
-olmaydi — kartochka Telegram'ga havola beradi.
+1. **Mini App ichida** — bir bosishsiz, `initData` imzosi tekshiriladi.
+2. **Oddiy brauzerda — bot orqali.** Kirish oynasidagi «Telegram bot orqali
+   kirish» tugmasi:
 
+```
+brauzer ──POST /api/auth/bot/start──▶ server: kod (16 hex, 5 daqiqa) + havola
+brauzer ──t.me/<bot>?start=login_<kod>──▶ Telegram (bot ochiladi)
+bot: «Qurilma: Chrome · Windows, IP: … Tasdiqlaysizmi?»  [Tasdiqlayman]
+bot ──Redis: kod → {telegram_id, ism}──▶
+brauzer ──GET /api/auth/bot/poll (har 2 s)──▶ server: kod bir marta beriladi → JWT
+```
+
+   **Nega tasdiqlash tugmasi bor?** Kodni boshqa odam yaratib, sizga havola
+   sifatida yuborishi mumkin: «Start» bosgan zahoti u sizning hisobingizga kirib
+   olardi. Shuning uchun bot so'rov qayerdan kelganini (IP, qurilma) ko'rsatadi
+   va faqat ochiq tasdiq bilan kiritadi. Yana: kod bir martalik va 5 daqiqalik,
+   `start` IP bo'yicha daqiqada 10 ta bilan cheklangan, bot yo'q kodni
+   tasdiqlay olmaydi.
+
+> **Bot jarayoni doim ishlab turishi shart** (`telegram_bot` buyrug'i,
+> `docker compose … up -d bot`) — brauzerdan kirish shunga tayanadi. Bot
+> to'xtasa, Mini App orqali kirish ishlayveradi, brauzerdan esa kirib bo'lmaydi.
+>
 > `TELEGRAM_BOT_TOKEN` sozlanmagan bo'lsa saytga hech kim kira olmaydi
 > (server ishga tushganda log'ga ogohlantirish yozadi). Admin panel
-> Django hisobi bilan ishlayveradi.
+> superuser hisobi bilan ishlayveradi.
 
 ### Telegram Mini App
 
@@ -449,8 +532,9 @@ sifatida uzatiladi.
 
 Google va dasturchi kirishi olib tashlangani uchun sinovlar ham haqiqiy
 yo'ldan yuradi: `initData` sinov bot tokeni bilan imzolanadi va
-`/api/auth/telegram` ga yuboriladi. Ya'ni ishlab chiqarishdagi oqimning
-aynan o'zi tekshiriladi.
+`/api/auth/telegram` ga yuboriladi, bot orqali kirish esa
+`store.botlogin_confirm_sync()` bilan (bot jarayonining o'rniga) tekshiriladi.
+Ya'ni ishlab chiqarishdagi oqimning aynan o'zi tekshiriladi.
 
 `/api/auth/google` va `/api/auth/dev` endi **mavjud emas** (404).
 

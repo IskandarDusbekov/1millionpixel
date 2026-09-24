@@ -18,6 +18,8 @@ import urllib.request
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from canvas.redis_store import k_botlogin, store
+
 API = "https://api.telegram.org/bot{token}/{method}"
 
 
@@ -82,17 +84,79 @@ class Command(BaseCommand):
 
             for upd in resp.get("result", []):
                 offset = upd["update_id"] + 1
-                msg = upd.get("message") or {}
-                text = (msg.get("text") or "").strip()
-                chat = (msg.get("chat") or {}).get("id")
-                if not chat or not text.startswith("/start"):
-                    continue
-                call(token, "sendMessage",
-                     chat_id=chat,
-                     text=("Million Piksel — 1 000 000 pikselli umumiy doska.\n"
-                           "Birgalikda rasm chizamiz. Boshlash uchun pastdagi "
-                           "tugmani bosing."),
-                     reply_markup={"inline_keyboard": [[
-                         {"text": "Chizishni boshlash",
-                          "web_app": {"url": url}}
-                     ]]})
+                try:
+                    if upd.get("callback_query"):
+                        self.on_callback(token, upd["callback_query"])
+                    elif upd.get("message"):
+                        self.on_message(token, url, upd["message"])
+                except Exception as exc:                  # bitta xato botni yiqitmasin
+                    self.stderr.write(f"update {upd.get('update_id')}: {exc}")
+
+    # ------------------------------------------------------------ xabarlar
+    def on_message(self, token: str, url: str, msg: dict):
+        text = (msg.get("text") or "").strip()
+        chat = (msg.get("chat") or {}).get("id")
+        if not chat or not text.startswith("/start"):
+            return
+
+        param = text[len("/start"):].strip()
+        if param.startswith("login_"):
+            return self.ask_confirm(token, msg, param[len("login_"):])
+
+        call(token, "sendMessage",
+             chat_id=chat,
+             text=("Million Piksel — 1 000 000 pikselli umumiy doska.\n"
+                   "Birgalikda rasm chizamiz. Boshlash uchun pastdagi "
+                   "tugmani bosing."),
+             reply_markup={"inline_keyboard": [[
+                 {"text": "Chizishni boshlash", "web_app": {"url": url}}
+             ]]})
+
+    # ------------------------------------------- brauzerdan kirishni tasdiqlash
+    # Nega tugma? Kodni boshqa odam yaratib, sizga yuborishi mumkin: "Start"
+    # bosgan zahoti u sizning hisobingizga kirib olardi. Shuning uchun so'rov
+    # qayerdan kelganini (IP, qurilma) ko'rsatamiz va faqat ochiq tasdiq bilan
+    # kiritamiz.
+    def ask_confirm(self, token: str, msg: dict, code: str):
+        chat = msg["chat"]["id"]
+        meta = store.botlogin_get_sync(code) if code.isalnum() else None
+        if not meta or meta.get("s") != "p":
+            call(token, "sendMessage", chat_id=chat,
+                 text="Bu havola eskirgan. Saytda «Bot orqali kirish» ni qayta bosing.")
+            return
+        call(token, "sendMessage", chat_id=chat,
+             text=("Million Piksel — saytga kirish so'rovi\n\n"
+                   f"Qurilma: {meta.get('ua') or '—'}\n"
+                   f"IP: {meta.get('ip') or '—'}\n\n"
+                   "Bu so'rovni SIZ boshlagan bo'lsangizgina tasdiqlang."),
+             reply_markup={"inline_keyboard": [[
+                 {"text": "Tasdiqlayman", "callback_data": f"ok:{code}"},
+                 {"text": "Bekor qilish", "callback_data": f"no:{code}"},
+             ]]})
+
+    def on_callback(self, token: str, cq: dict):
+        data = cq.get("data") or ""
+        chat = (cq.get("message") or {}).get("chat", {}).get("id")
+        msg_id = (cq.get("message") or {}).get("message_id")
+        who = cq.get("from") or {}
+        answer = "Xato"
+
+        action, _, code = data.partition(":")
+        if code.isalnum() and action == "ok" and who.get("id"):
+            ok = store.botlogin_confirm_sync(code, {
+                "telegram_id": who["id"],
+                "username": who.get("username") or "",
+                "display_name": " ".join(
+                    p for p in (who.get("first_name"), who.get("last_name")) if p),
+            })
+            answer = ("Tayyor! Saytga qayting — kirish avtomatik bo'ladi."
+                      if ok else "Havola eskirgan, saytda qayta boshlang.")
+        elif action == "no":
+            if code.isalnum():
+                store.key_delete_sync(k_botlogin(code))
+            answer = "Bekor qilindi."
+
+        call(token, "answerCallbackQuery", callback_query_id=cq["id"])
+        if chat and msg_id:
+            call(token, "editMessageText", chat_id=chat, message_id=msg_id,
+                 text=answer)

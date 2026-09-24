@@ -94,19 +94,21 @@
       icon: ICON_TAP,
       title: 'Bosing — bo‘yaladi',
       text: 'Pastdan rang tanlang va doskaga bosing. Tasdiqlash shart emas, ' +
-            'piksel darhol qo‘yiladi va uni hamma ko‘radi.'
+            'piksel darhol qo‘yiladi va uni hamma ko‘radi. ' +
+            'Tez chizish uchun qalam tugmasini yoqing va barmog‘ingizni sudrang.'
     },
     {
       icon: ICON_ZOOM,
       title: 'Yaqinlashtiring va suring',
       text: 'Ikki barmoq bilan kattalashtiring, bir barmoq bilan suring. ' +
-            'Kompyuterda — g‘ildirak va sichqonchani bosib surish.'
+            'Kompyuterda — g‘ildirak, sichqonchani bosib surish, ' +
+            'o‘ng tugma yoki Alt bilan bosib rangni olish.'
     },
     {
       icon: ICON_BOLT,
-      title: 'Energiya tiklanadi',
-      text: 'Har bo‘yash 1 energiya oladi. U o‘zi tiklanadi — ' +
-            'odam qancha ko‘p bo‘lsa, shuncha sekin. ' +
+      title: 'Bo‘yoq o‘zi tiklanadi',
+      text: 'Har piksel 1 bo‘yoq oladi. Cho‘tka atrofidagi halqa ' +
+            'keyingi bo‘yoq qachon kelishini ko‘rsatadi. ' +
             'Do‘st chaqirsangiz zaxirangiz kattalashadi.'
     }
   ];
@@ -170,11 +172,11 @@
 
     box.innerHTML =
       '<h3>Do‘stlarni chaqiring</h3>' +
-      '<p>Chaqirgan har bir do‘stingiz uchun zaxirangiz ' +
+      '<p>Chaqirgan har bir do‘stingiz uchun bo‘yoq zaxirangiz ' +
       '<b>+' + me.bonus_per_invite + '</b> piksel oshadi.</p>' +
 
       '<div class="mp-stat"><span>Chaqirilgan</span><b>' + me.invites + '</b></div>' +
-      '<div class="mp-stat"><span>Zaxirangiz</span><b>' + me.max_energy +
+      '<div class="mp-stat"><span>Bo‘yoq zaxirangiz</span><b>' + me.max_energy +
         ' piksel</b></div>' +
       '<div class="mp-stat"><span>Qo‘ygan piksellaringiz</span><b>' +
         me.pixels + '</b></div>' +

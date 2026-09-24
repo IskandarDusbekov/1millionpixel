@@ -27,8 +27,8 @@ OP_REPORT = 0x03
 N = settings.CANVAS_SIZE
 
 # Token bucket: normal odam sekundiga 20 tadan ko'p piksel qo'ya olmaydi.
-RATE_REFILL = 20.0       # token/sek
-RATE_BURST = 60.0
+RATE_REFILL = 30.0       # token/sek (mijoz chiziq tortganda ~20/s yuboradi)
+RATE_BURST = 90.0
 
 CLOSE_AUTH = 4001
 CLOSE_BANNED = 4003
@@ -102,7 +102,7 @@ class PixelConsumer(AsyncWebsocketConsumer):
                     self.uid, now, bc.cooldown_now(), new_max)
                 await self.send(bytes_data=bc.pack_energy(energy, new_max, nxt))
                 await self.send(bytes_data=bc.pack_toast(
-                    "Do'stingiz qo'shildi — zaxirangiz oshdi!"))
+                    "Do'stingiz qo'shildi — bo'yoq zaxirangiz oshdi!"))
         elif op == OP_REPORT and len(bytes_data) == 5:
             x, y = struct.unpack("!HH", bytes_data[1:5])
             await self._report(x, y)
@@ -122,6 +122,18 @@ class PixelConsumer(AsyncWebsocketConsumer):
         if not (0 <= x < N and 0 <= y < N and 0 <= color < settings.PALETTE_LEN):
             return
 
+        if bc.readonly_now():
+            # Mijoz energiyani optimistik sarflagan — haqiqiy holatni qaytaramiz
+            energy, nxt = await store.energy(
+                self.uid, int(time.time() * 1000), bc.cooldown_now(),
+                self.max_energy)
+            await self.send(bytes_data=bc.pack_energy(
+                energy, self.max_energy, nxt))
+            await self.send(bytes_data=bc.pack_reject(x, y))
+            await self.send(bytes_data=bc.pack_toast(
+                "Doska hozir faqat ko'rish rejimida"))
+            return
+
         now = int(time.time() * 1000)
         cd = bc.cooldown_now()
 
@@ -136,7 +148,7 @@ class PixelConsumer(AsyncWebsocketConsumer):
             # qaytarish kerakligini aytamiz.
             await self.send(bytes_data=bc.pack_reject(x, y))
             await self.send(bytes_data=bc.pack_toast(
-                "Energiya tugadi, biroz kuting"))
+                "Bo'yoq tiklanmoqda — biroz ko'z dam oling"))
             return
 
         await store.heartbeat(self.uid, now)

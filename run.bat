@@ -26,7 +26,7 @@ if not exist "dev.sqlite3" (
 echo.
 echo ================================================
 echo   Sayt   : http://127.0.0.1:8000
-echo   Panel  : http://127.0.0.1:8000/admin/panel/
+echo   Panel  : http://127.0.0.1:8000/admin/panel/  ^(superuser login/paroli bilan^)
 echo   To'xtatish: Ctrl+C
 echo ================================================
 echo.

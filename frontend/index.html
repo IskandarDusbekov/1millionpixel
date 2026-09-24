@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Million Piksel</title>
+<!-- Server bu yerga admin paneldagi SEO ma'lumotlarini (title, description, OG, JSON-LD) yozadi -->
+<!--MP:SEO-->
+<!--MP:CONFIG-->
 <!-- Ichki SVG favicon: alohida fayl va qo'shimcha so'rov kerak emas -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%23FFFAF0'/%3E%3Crect x='1' y='1' width='3' height='3' fill='%23E50000'/%3E%3Crect x='4' y='1' width='3' height='3' fill='%230083C7'/%3E%3Crect x='1' y='4' width='3' height='3' fill='%23E5D900'/%3E%3Crect x='4' y='4' width='3' height='3' fill='%2302BE01'/%3E%3C/svg%3E">
 <style>
@@ -15,13 +18,15 @@
   --muted:#6B6480;
   --line:#DBCBAE;
   --accent:#1E7F86;
+  --accent-fg:#fff;
   --grid:rgba(0,0,0,.12);
   --toast-bg:#1B2340;
   --toast-fg:#FFFAF0;
-  --r:8px;
-  --rp:12px;
+  --ok:#1B7F3B;
+  --r:10px;
+  --rp:14px;
   --topH:52px;
-  --bottomH:120px;
+  --bottomH:150px;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -31,9 +36,11 @@
     --muted:#9A93AE;
     --line:#2E3660;
     --accent:#49B6BD;
+    --accent-fg:#0E1224;
     --grid:rgba(0,0,0,.12);
     --toast-bg:#070A16;
     --toast-fg:#EFE7D6;
+    --ok:#5ED18A;
   }
 }
 
@@ -48,6 +55,8 @@ body{
 }
 button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;
+      stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 
 /* ---------- 1. Yuqori panel ---------- */
 .top{
@@ -60,9 +69,10 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
   display:flex;align-items:center;gap:10px;
   height:52px;padding:0 12px;
 }
-.brand{font-weight:700;font-size:16px;letter-spacing:-.2px;white-space:nowrap}
+.brand{font-weight:700;font-size:16px;letter-spacing:-.2px;white-space:nowrap;
+       overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
 .online{
-  display:flex;align-items:center;gap:6px;
+  display:flex;align-items:center;gap:6px;flex:none;
   color:var(--muted);font-size:12px;white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
@@ -72,9 +82,8 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
   animation:pulse 2.4s ease-in-out infinite;
 }
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-@media (prefers-reduced-motion:reduce){.dot{animation:none}}
 .energy{
-  margin-left:auto;font-size:12px;color:var(--muted);
+  margin-left:auto;font-size:12px;color:var(--muted);flex:none;
   font-variant-numeric:tabular-nums;white-space:nowrap;
 }
 .energy b{color:var(--text);font-weight:600}
@@ -84,7 +93,20 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
   background:var(--accent);
   transition:width .18s linear;
 }
-@media (prefers-reduced-motion:reduce){.ebar > i{transition:none}}
+.ebar.glow > i{animation:barglow .6s ease-out}
+@keyframes barglow{0%{filter:brightness(1.8)}100%{filter:none}}
+.announce{
+  display:flex;align-items:center;gap:8px;justify-content:center;
+  padding:6px 34px 6px 12px;font-size:12.5px;line-height:1.35;
+  background:var(--accent);color:var(--accent-fg);text-align:center;position:relative;
+}
+.announce[hidden]{display:none}
+.announce.ro{background:#B3261E;color:#fff}
+.announce button{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  width:28px;height:28px;border:0;border-radius:50%;background:transparent;
+  color:inherit;cursor:pointer;font-size:16px;line-height:1;
+}
 
 /* ---------- 2. Kanvas ---------- */
 #board{
@@ -96,29 +118,37 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
   image-rendering:crisp-edges;
   cursor:crosshair;
 }
+#board.pan{cursor:grab}
+#board.picking{cursor:copy}
+/* Animatsiya qatlami: bo'yash effektlari shu yerga chiziladi */
+#fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 
 /* ---------- 4. Suzuvchi koordinata paneli ---------- */
 .floating{
   position:fixed;z-index:25;
   left:50%;transform:translateX(-50%);
   bottom:calc(var(--bottomH) + 8px);
-  display:flex;align-items:center;gap:8px;
-  padding:5px 5px 5px 12px;
+  display:flex;align-items:center;gap:6px;
+  padding:4px 4px 4px 12px;
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:var(--rp);
+  max-width:calc(100vw - 16px);
 }
 .floating .coord{
   font-size:13px;font-weight:600;
   font-variant-numeric:tabular-nums;
-  min-width:72px;text-align:center;
+  min-width:64px;text-align:center;
 }
 .floating .coord[data-empty="1"]{color:var(--muted);font-weight:400}
+.floating .zoomTxt{font-size:11px;color:var(--muted);min-width:34px;text-align:center;
+                   font-variant-numeric:tabular-nums}
 .floating button{
   background:transparent;
   border:1px solid var(--line);
   border-radius:var(--r);
-  padding:5px 10px;font-size:12px;color:var(--muted);
+  width:36px;height:36px;padding:0;color:var(--muted);
+  display:inline-flex;align-items:center;justify-content:center;
   cursor:pointer;
 }
 .floating button:active{background:var(--bg)}
@@ -129,34 +159,76 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
   background:var(--panel);
   border-top:1px solid var(--line);
   display:grid;gap:8px;
-  padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding:10px 10px calc(8px + env(safe-area-inset-bottom));
 }
 .palette{
-  display:flex;flex-wrap:wrap;gap:6px;
-  justify-content:center;align-items:center;
+  display:grid;grid-template-columns:repeat(12,1fr);gap:5px;
+  width:100%;max-width:540px;margin:0 auto;
 }
 .sw{
-  width:24px;height:24px;border-radius:5px;
+  aspect-ratio:1;min-height:22px;border-radius:7px;
   border:1px solid var(--line);
-  padding:0;cursor:pointer;flex:none;
-  transition:transform .12s ease;
+  padding:0;cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease;
 }
+.sw:hover{transform:translateY(-1px)}
 .sw[aria-pressed="true"]{
-  box-shadow:0 0 0 2px var(--text);
-  transform:scale(1.15);
+  box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--text);
+  transform:scale(1.12);
+  z-index:1;
 }
-@media (prefers-reduced-motion:reduce){.sw{transition:none}}
 
-.tools{display:flex;gap:8px}
+.dock{display:flex;align-items:center;gap:10px;max-width:540px;width:100%;margin:0 auto}
+.brushWrap{position:relative;flex:none}
+/* Cho'tka: tanlangan rang + atrofida keyingi bo'yoq tiklanishi halqasi */
+.brush{
+  --p:1;--c:#E50000;--cf:#fff;
+  position:relative;width:58px;height:58px;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--p) * 360deg), var(--line) 0);
+  display:grid;place-items:center;
+}
+.brush::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--panel)}
+.brush i{
+  position:absolute;inset:8px;border-radius:50%;background:var(--c);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.14);transition:background .18s,filter .2s;
+}
+.brush b{position:relative;font-size:16px;font-weight:700;color:var(--cf);
+         font-variant-numeric:tabular-nums;text-shadow:0 0 3px rgba(0,0,0,.25)}
+.brush.full{box-shadow:0 0 0 0 transparent}
+.brush.empty i{filter:grayscale(.75) opacity(.55)}
+.brush.pop{animation:brushpop .38s cubic-bezier(.2,1.7,.4,1)}
+.brush.squish{animation:squish .2s ease-out}
+.brush.shake{animation:shake .32s}
+.brush.tint i{animation:tint .3s ease-out}
+@keyframes brushpop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
+@keyframes squish{0%{transform:scale(.84)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}
+                 40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@keyframes tint{0%{transform:scale(.7)}100%{transform:scale(1)}}
+.plus{
+  position:absolute;left:50%;top:-4px;transform:translate(-50%,0);
+  font-size:15px;font-weight:800;color:var(--accent);pointer-events:none;opacity:0;
+  text-shadow:0 1px 0 var(--panel),0 -1px 0 var(--panel),1px 0 0 var(--panel),-1px 0 0 var(--panel);
+}
+.plus.on{animation:plusfly .9s ease-out forwards}
+@keyframes plusfly{0%{opacity:0;transform:translate(-50%,6px) scale(.7)}
+                   20%{opacity:1;transform:translate(-50%,-6px) scale(1.15)}
+                   100%{opacity:0;transform:translate(-50%,-34px) scale(1)}}
+
+.tools{display:flex;gap:6px;flex:1;justify-content:flex-end}
 .tools button{
-  flex:1;height:38px;
+  flex:1;max-width:52px;min-width:40px;height:46px;
   background:transparent;
   border:1px solid var(--line);
   border-radius:var(--r);
-  font-size:14px;font-weight:500;
-  cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text);
+  transition:background .12s,transform .1s;
 }
-.tools button:active{background:var(--bg)}
+.tools button:active{background:var(--bg);transform:scale(.94)}
+.tools button[aria-pressed="true"]{
+  background:var(--accent);border-color:var(--accent);color:var(--accent-fg);
+}
 
 .credit{
   text-align:center;font-size:10px;color:var(--muted);
@@ -168,16 +240,16 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
 .toast{
   position:fixed;z-index:60;
   top:calc(var(--topH) + 12px);
-  left:50%;transform:translateX(-50%);
+  left:50%;transform:translateX(-50%) translateY(-6px);
   max-width:calc(100vw - 32px);
   background:var(--toast-bg);color:var(--toast-fg);
-  padding:9px 14px;border-radius:var(--rp);
-  font-size:13px;white-space:nowrap;
+  padding:10px 16px;border-radius:var(--rp);
+  font-size:13px;text-align:center;
   opacity:0;pointer-events:none;
-  transition:opacity .16s ease;
+  transition:opacity .18s ease,transform .18s ease;
 }
-.toast.on{opacity:1}
-@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.toast.win{background:var(--accent);color:var(--accent-fg);font-weight:600}
 
 .sr{
   position:absolute;width:1px;height:1px;
@@ -186,38 +258,81 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
 }
 
 @media (max-width:359px){
-  .sw{width:22px;height:22px}
   .brand{font-size:15px}
+  .tools button{min-width:36px}
+}
+@media (max-height:640px){
+  .credit{display:none}          /* past ekranda doskaga joy qoldiramiz */
+  .bottom{gap:6px;padding-top:8px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
 }
 </style>
 </head>
 <body>
 
 <canvas id="board" tabindex="0" aria-label="Umumiy kanvas, 1000 ga 1000 piksel. Surish uchun strelka tugmalari."></canvas>
+<canvas id="fx" aria-hidden="true"></canvas>
+
+<!--MP:SEOBODY-->
 
 <div class="top">
   <div class="topbar">
-    <div class="brand">Million Piksel</div>
+    <div class="brand" id="brandTxt">Million Piksel</div>
     <div class="online"><span class="dot" aria-hidden="true"></span><span id="onlineTxt">0 onlayn</span></div>
-    <div class="energy" id="energyTxt" aria-live="off"><b>50/50</b> · to‘liq</div>
+    <div class="energy" id="energyTxt" aria-live="off"><b>50/50</b></div>
   </div>
-  <div class="ebar" role="progressbar" aria-label="Energiya" aria-valuemin="0" aria-valuemax="50" aria-valuenow="50">
+  <div class="ebar" id="ebar" role="progressbar" aria-label="Bo‘yoq zaxirasi" aria-valuemin="0" aria-valuemax="50" aria-valuenow="50">
     <i id="ebarFill"></i>
   </div>
+  <div class="announce" id="announce" hidden><span id="announceTxt"></span><button id="announceX" aria-label="Yopish">×</button></div>
 </div>
 
 <div class="floating">
   <span class="coord" id="coordTxt" data-empty="1" aria-live="polite">—</span>
-  <button id="friendsBtn" aria-label="Do‘stlarni chaqirish va jamoa">Do‘stlar</button>
-  <button id="reportBtn" aria-label="Ushbu koordinata haqida shikoyat qilish">Shikoyat</button>
+  <span class="zoomTxt" id="zoomTxt" title="Kattalashtirish">×1</span>
+  <button id="shareBtn" aria-label="Shu joyga havolani ulashish" title="Ulashish">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4"/></svg>
+  </button>
+  <button id="saveBtn" aria-label="Doskani rasm sifatida saqlash" title="Rasmni saqlash">
+    <svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+  </button>
+  <button id="friendsBtn" aria-label="Do‘stlarni chaqirish va jamoa" title="Do‘stlar">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 3-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16.5 4.6a3.5 3.5 0 010 6.8M18 14.7c2.2.7 3.5 2.3 3.5 5.3"/></svg>
+  </button>
+  <button id="reportBtn" aria-label="Ushbu koordinata haqida shikoyat qilish" title="Shikoyat">
+    <svg class="i" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>
+  </button>
 </div>
 
 <footer class="bottom">
   <div class="palette" id="palette" role="group" aria-label="Rang tanlash"></div>
-  <div class="tools">
-    <button id="fitBtn" aria-label="Butun doskani ko‘rsatish">Butun doska</button>
-    <button id="zinBtn" aria-label="Yaqinlashtirish">+</button>
-    <button id="zoutBtn" aria-label="Uzoqlashtirish">−</button>
+  <div class="dock">
+    <div class="brushWrap">
+      <div class="brush" id="brush" role="img" aria-label="Bo‘yoq zaxirasi"><i></i><b id="brushN">50</b></div>
+      <span class="plus" id="plus" aria-hidden="true">+1</span>
+    </div>
+    <div class="tools">
+      <button id="drawBtn" aria-pressed="false" aria-label="Chizish rejimi: barmoqni sudrab chizish" title="Chizish rejimi (D)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19z"/><path d="M14.5 6.5l3 3"/></svg>
+      </button>
+      <button id="pickBtn" aria-pressed="false" aria-label="Rang olish: doskadagi rangni tanlash" title="Rang olish (Alt+bosish)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M14 4l6 6-2 2-1-1-7.5 7.5a2 2 0 01-1.4.6H6v-2.1a2 2 0 01.6-1.4L14 8l-1-1z"/></svg>
+      </button>
+      <button id="fitBtn" aria-label="Butun doskani ko‘rsatish" title="Butun doska (0)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button id="zoutBtn" aria-label="Uzoqlashtirish" title="Uzoqlashtirish (−)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+      </button>
+      <button id="zinBtn" aria-label="Yaqinlashtirish" title="Yaqinlashtirish (+)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>
+      </button>
+      <button id="sndBtn" aria-pressed="true" aria-label="Ovoz" title="Ovoz (M)">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5zM15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11"/></svg>
+      </button>
+    </div>
   </div>
   <div class="credit">Powered by Million Piksel · <a href="https://t.me/" target="_blank" rel="noopener">Telegram kanal</a></div>
 </footer>
@@ -231,17 +346,15 @@ button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
 /* ================================================================
    KONFIGURATSIYA
    ================================================================ */
+const CFG        = window.MP_CONFIG || {};
 const N          = 1000;          // doska o‘lchami (N x N)
-let   MAX_E      = 50;            // maksimal energiya (server o‘zgartirishi mumkin:
-                                  // do‘st chaqirgan foydalanuvchida kattaroq)
-const MAX_SCALE  = 36;            // 1 piksel ~36 ekran pikseli
+let   MAX_E      = CFG.max_energy || 50;   // maksimal zaxira (do‘st bonusi bilan oshadi)
+const MAX_SCALE  = 64;            // 1 piksel ~64 ekran pikseli
 const DRAG_SLOP  = 6;             // 6px dan ko‘p sursa — bo‘yash emas, surish
 const GRID_FROM  = 8;             // shu zoomdan boshlab to‘r chiziladi
-const DEMO       = true;          // demo rasm (backend ulanganda false qiling)
-
-// Agar 0 dan katta qilsangiz: shu zoomdan uzoqda bosish bo‘yamaydi,
-// balki o‘sha nuqtani yaqinlashtiradi (mobil uchun xatoni kamaytiradi).
-const TAP_ZOOM_BELOW = 0;
+const ZOOM_ASSIST = 2.5;          // bundan uzoqda bosish bo‘yamaydi, yaqinlashtiradi
+const STROKE_MS  = 38;            // chiziq tortishda piksellar orasidagi eng kam vaqt
+const REDUCED    = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const PALETTE = [
   '#FFFFFF','#E4E4E4','#888888','#444444','#111111','#FFA7D1',
@@ -264,14 +377,19 @@ const RGB = PALETTE.map(h => [
 const state = new Uint8Array(N * N).fill(EMPTY);   // 1 MB — butun doska
 
 let color   = 6;          // tanlangan rang (#E50000)
-let online  = 7;          // onlayn foydalanuvchilar
+let online  = 0;          // onlayn foydalanuvchilar
 let eBase   = MAX_E;      // oxirgi bo‘yashdagi energiya
 let eAt     = Date.now(); // oxirgi bo‘yash vaqti
 let lastCell = null;      // oxirgi bosilgan katak
+let readonly = !!CFG.readonly;
+let drawMode = false;     // barmoqni sudrab chizish
+let pickMode = false;     // keyingi bosish rangni oladi
+let painted  = 0;         // shu foydalanuvchi qo‘ygan piksellar (yutuqlar uchun)
+try { painted = +localStorage.getItem('mp_painted') || 0; } catch (e) {}
 
 /* --- ko‘rish oynasi: ekran = ox + board * scale --- */
 let scale = 1, ox = 0, oy = 0;
-let W = 0, H = 0, dpr = 1, topH = 52, bottomH = 120;
+let W = 0, H = 0, dpr = 1, topH = 52, bottomH = 150;
 let dirty = true;
 
 /* ================================================================
@@ -285,6 +403,8 @@ octx.fillRect(0, 0, N, N);
 
 const board = document.getElementById('board');
 const ctx   = board.getContext('2d', { alpha:false });
+const fxc   = document.getElementById('fx');
+const fctx  = fxc.getContext('2d');
 
 /** Bitta piksel — offscreen'ga. O(1). */
 function blit(x, y, v){
@@ -306,37 +426,59 @@ function blitAll(){
 }
 
 /* ================================================================
-   MASSHTAB VA SURISH  —  ikkitasi ALOHIDA funksiyada.
-   (Aralashtirilsa, zoom paytida rasm siljib ketadi.)
+   KAMERA: masshtab, surish, silliq zoom, inersiya
+   Masshtab (clampScale) va surish (clampPan) ALOHIDA funksiyalarda —
+   aralashtirilsa, zoom paytida rasm siljib ketadi.
    ================================================================ */
 function viewH(){ return Math.max(60, H - topH - bottomH); }
+function minScale(){ return Math.min(W / N, viewH() / N) * 0.96; }
+function clampScale(s){ return Math.max(minScale(), Math.min(MAX_SCALE, s)); }
 
-function minScale(){
-  return Math.min(W / N, viewH() / N) * 0.96;
+function clampOx(s, v){
+  const vw = W, b = N * s;
+  return (b <= vw) ? (vw - b) / 2 : Math.min(0, Math.max(vw - b, v));
 }
-
-/** 1) Faqat masshtabni cheklaydi. */
-function clampScale(s){
-  return Math.max(minScale(), Math.min(MAX_SCALE, s));
+function clampOy(s, v){
+  const vh = viewH(), b = N * s;
+  return (b <= vh) ? topH + (vh - b) / 2 : Math.min(topH, Math.max(topH + vh - b, v));
 }
+function clampPan(){ ox = clampOx(scale, ox); oy = clampOy(scale, oy); }
 
-/** 2) Faqat surishni cheklaydi. Doska oynadan kichik bo‘lsa — markazda. */
-function clampPan(){
-  const vw = W, vh = viewH(), b = N * scale;
-  ox = (b <= vw) ? (vw - b) / 2 : Math.min(0, Math.max(vw - b, ox));
-  oy = (b <= vh) ? topH + (vh - b) / 2
-                 : Math.min(topH, Math.max(topH + vh - b, oy));
-}
+function viewCenter(){ return { cx: W / 2, cy: topH + viewH() / 2 }; }
 
-/**
- * Nuqtaga bog‘langan zoom.
- * Tartib muhim: global koordinata → masshtabni cheklash → ox/oy qayta hisoblash.
- * Shunda (sx,sy) ostidagi katak aynan o‘sha joyda qoladi.
- */
-function zoomAt(sx, sy, next){
+/* Animatsiyalar: bir vaqtda faqat bittasi ishlaydi */
+let tween = null;      // tugma / havola bilan uchish
+let wheel = null;      // g‘ildirak: maqsad masshtabga silliq yaqinlashish
+let inertia = null;    // surib qo‘yib yuborilgandan keyingi sirpanish
+function cancelAnim(){ tween = null; wheel = null; inertia = null; }
+
+/** (s1, ox1, oy1) ko‘rinishga silliq o‘tish. Masshtab logarifmik, markaz chiziqli. */
+function tweenTo(s1, ox1, oy1, ms){
+  s1 = clampScale(s1);
+  ox1 = clampOx(s1, ox1); oy1 = clampOy(s1, oy1);
+  cancelAnim();
   viewMode = 'free';
-  const bx = (sx - ox) / scale;
-  const by = (sy - oy) / scale;
+  if (REDUCED || !ms){ scale = s1; ox = ox1; oy = oy1; dirty = true; return; }
+  const { cx, cy } = viewCenter();
+  tween = {
+    t0: performance.now(), ms, s0: scale, s1,
+    b0x: (cx - ox) / scale,  b0y: (cy - oy) / scale,
+    b1x: (cx - ox1) / s1,    b1y: (cy - oy1) / s1
+  };
+}
+
+/** Ekran nuqtasi (sx,sy) ostidagi katak joyida qolgan holda masshtabni o‘zgartirish. */
+function zoomAtAnimated(sx, sy, next, ms){
+  const s1 = clampScale(next);
+  const bx = (sx - ox) / scale, by = (sy - oy) / scale;
+  tweenTo(s1, sx - bx * s1, sy - by * s1, ms == null ? 200 : ms);
+}
+
+/** Zoom bir zumda (ikki barmoq bilan chimchilash uchun). */
+function zoomAt(sx, sy, next){
+  cancelAnim();
+  viewMode = 'free';
+  const bx = (sx - ox) / scale, by = (sy - oy) / scale;
   scale = clampScale(next);
   ox = sx - bx * scale;
   oy = sy - by * scale;
@@ -344,15 +486,47 @@ function zoomAt(sx, sy, next){
   dirty = true;
 }
 
-/** Katakni oynaning markazida ushlab turib zoom qilish. */
-function centerOn(bx, by, next){
-  viewMode = 'free';
-  const cx = W / 2, cy = topH + viewH() / 2;
-  scale = clampScale(next);
-  ox = cx - (bx + 0.5) * scale;
-  oy = cy - (by + 0.5) * scale;
-  clampPan();
-  dirty = true;
+/** Katakni oynaning markaziga olib kelish. */
+function flyToCell(bx, by, next, ms){
+  const { cx, cy } = viewCenter();
+  const s1 = clampScale(next);
+  tweenTo(s1, cx - (bx + 0.5) * s1, cy - (by + 0.5) * s1, ms == null ? 320 : ms);
+}
+
+function stepCamera(now, dt){
+  let moving = false;
+  if (tween){
+    let p = Math.min(1, (now - tween.t0) / tween.ms);
+    const e = 1 - Math.pow(1 - p, 3);
+    const s = Math.exp(Math.log(tween.s0) + (Math.log(tween.s1) - Math.log(tween.s0)) * e);
+    const bx = tween.b0x + (tween.b1x - tween.b0x) * e;
+    const by = tween.b0y + (tween.b1y - tween.b0y) * e;
+    const { cx, cy } = viewCenter();
+    scale = s; ox = cx - bx * s; oy = cy - by * s;
+    clampPan();
+    if (p >= 1) tween = null;
+    moving = true;
+  }
+  if (wheel){
+    const k = 1 - Math.exp(-dt * 16);
+    let ns = scale + (wheel.target - scale) * k;
+    if (Math.abs(wheel.target - ns) < wheel.target * 0.002) ns = wheel.target;
+    scale = ns;
+    ox = wheel.sx - wheel.bx * scale;
+    oy = wheel.sy - wheel.by * scale;
+    clampPan();
+    if (scale === wheel.target) wheel = null;
+    moving = true;
+  }
+  if (inertia){
+    ox += inertia.vx * dt; oy += inertia.vy * dt;
+    const d = Math.exp(-dt * 4.2);
+    inertia.vx *= d; inertia.vy *= d;
+    clampPan();
+    if (Math.hypot(inertia.vx, inertia.vy) < 14) inertia = null;
+    moving = true;
+  }
+  if (moving) dirty = true;
 }
 
 /* Ko'rinish rejimi. Muhim: sahifa yuklanganda yoki ekran burilganda
@@ -362,21 +536,27 @@ function centerOn(bx, by, next){
 let viewMode = 'fit';          // 'fit' | 'cover' | 'free'
 
 function applyCover(){
-  // Aynan qoplaydigan masshtab: ekran to'la, lekin doskaning imkon
-  // qadar ko'p qismi ko'rinadi (kattaroq koeffitsient rasmni kesib tashlaydi).
   scale = clampScale(Math.max(W / N, viewH() / N));
   ox = W / 2 - (N / 2) * scale;
   oy = topH + viewH() / 2 - (N / 2) * scale;
 }
 
-function fitAll(){
+function fitAll(animated){
+  const s1 = minScale();
+  if (animated){
+    tweenTo(s1, 0, 0, 380);
+    viewMode = 'fit';
+    return;
+  }
+  cancelAnim();
   viewMode = 'fit';
-  scale = minScale();
+  scale = s1;
   clampPan();
   dirty = true;
 }
 
 function coverAll(){
+  cancelAnim();
   viewMode = 'cover';
   applyCover();
   clampPan();
@@ -389,11 +569,23 @@ function toBoard(sx, sy){
     y: Math.floor((sy - oy) / scale)
   };
 }
+const inBoard = (c) => c.x >= 0 && c.y >= 0 && c.x < N && c.y < N;
 
 /** Oyna markazidagi katak — lastCell bo‘lmaganda ishlatiladi. */
 function centerCell(){
   const c = toBoard(W / 2, topH + viewH() / 2);
   return { x: Math.min(N-1, Math.max(0, c.x)), y: Math.min(N-1, Math.max(0, c.y)) };
+}
+
+/** Tugma bilan zoom: oxirgi bo‘yalgan katak ko‘rinib tursa — shu joyda, aks holda markazda. */
+function zoomButton(factor){
+  let { cx, cy } = viewCenter();
+  if (lastCell){
+    const sx = ox + (lastCell.x + .5) * scale, sy = oy + (lastCell.y + .5) * scale;
+    if (sx > 0 && sx < W && sy > topH && sy < H - bottomH){ cx = sx; cy = sy; }
+  }
+  const base = wheel ? wheel.target : (tween ? tween.s1 : scale);
+  zoomAtAnimated(cx, cy, base * factor, 220);
 }
 
 /* ================================================================
@@ -433,10 +625,16 @@ function render(){
 
   if (scale > GRID_FROM) drawGrid(x, y, s);
 
-  if (hover && scale >= GRID_FROM){
+  // Sichqoncha ostidagi katak: tanlangan rangning yarim shaffof ko‘rinishi
+  if (hover && scale >= 3){
+    const hx = x + hover.x * scale, hy = y + hover.y * scale;
+    ctx.globalAlpha = .6;
+    ctx.fillStyle = PALETTE[color];
+    ctx.fillRect(hx, hy, scale, scale);
+    ctx.globalAlpha = 1;
     ctx.lineWidth = 2;
-    ctx.strokeStyle = theme.accent;
-    ctx.strokeRect(x + hover.x * scale - 1, y + hover.y * scale - 1, scale + 2, scale + 2);
+    ctx.strokeStyle = pickMode ? '#B3261E' : theme.accent;
+    ctx.strokeRect(hx - 1, hy - 1, scale + 2, scale + 2);
   }
 }
 
@@ -463,13 +661,161 @@ function drawGrid(x, y, s){
   ctx.stroke();
 }
 
-(function loop(){
-  if (dirty){ dirty = false; render(); }
-  requestAnimationFrame(loop);
-})();
+/* ================================================================
+   EFFEKTLAR  —  bo‘yalganda: "pop" + to‘lqin + sachragan zarralar.
+   Hammasi doska koordinatalarida saqlanadi, shuning uchun surilsa ham
+   o‘z joyida qoladi.
+   ================================================================ */
+const fxItems = [];
+let fxWas = false;
+const rnd = Math.random;
+
+function shade(hex, k){                       // k>0 — ochroq, k<0 — to‘qroq
+  const c = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16));
+  return 'rgb(' + c.map(v => Math.max(0, Math.min(255,
+    Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k))))).join(',') + ')';
+}
+
+function addPaintFx(x, y, ci, big){
+  if (fxItems.length > 500) fxItems.splice(0, 120);
+  const t0 = performance.now(), col = PALETTE[ci];
+  fxItems.push({ k:'pop',  x, y, col, t0, d:300 });
+  fxItems.push({ k:'ring', x, y, col, t0, d:560, a:.95 });
+  if (REDUCED) return;
+  const n = big ? 34 : 10;
+  for (let i = 0; i < n; i++){
+    const ang = rnd() * Math.PI * 2;
+    const sp = (60 + rnd() * 130) * (big ? 1.7 : 1);
+    fxItems.push({
+      k:'bit', x, y, dx:0, dy:0,
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 80,
+      col: shade(col, rnd() < .5 ? .35 : -.2),
+      t0, d: 520 + rnd() * 320, s: 2 + rnd() * 2.6
+    });
+  }
+}
+
+/** Boshqa foydalanuvchining pikseli: sezilar-sezilmas nur. Ko‘p bo‘lsa cheklanadi. */
+let remotePulses = 0;
+function addRemoteFx(x, y, ci){
+  if (scale < 2.5 || remotePulses > 60) return;
+  const sx = ox + (x + .5) * scale, sy = oy + (y + .5) * scale;
+  if (sx < 0 || sx > W || sy < topH || sy > H - bottomH) return;
+  remotePulses++;
+  fxItems.push({ k:'ring', x, y, col:PALETTE[ci], t0:performance.now(), d:420, a:.55,
+                 small:true, remote:true });
+}
+
+/** Rang bir xil bo‘lsa — energiya sarflanmaydi, faqat mayin ishora. */
+function addSameFx(x, y, ci){
+  fxItems.push({ k:'ring', x, y, col:PALETTE[ci], t0:performance.now(), d:380, a:.6, small:true });
+}
+
+function renderFx(now, dt){
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fctx.clearRect(0, 0, W, H);
+  const rx = Math.round(ox * dpr) / dpr, ry = Math.round(oy * dpr) / dpr;
+  const cell = Math.max(scale, 6);            // uzoqdan ham ko‘rinsin
+
+  for (let i = fxItems.length - 1; i >= 0; i--){
+    const f = fxItems[i];
+    const t = (now - f.t0) / f.d;
+    if (t >= 1){
+      if (f.remote) remotePulses--;
+      fxItems.splice(i, 1);
+      continue;
+    }
+    const cx = rx + (f.x + .5) * scale, cy = ry + (f.y + .5) * scale;
+
+    if (f.k === 'pop'){
+      const k = 1 + .75 * (1 - t) * (1 - t);
+      const side = cell * k;
+      fctx.globalAlpha = 1 - t * t;
+      fctx.fillStyle = f.col;
+      fctx.fillRect(cx - side / 2, cy - side / 2, side, side);
+      fctx.lineWidth = 2;
+      fctx.strokeStyle = 'rgba(255,255,255,.9)';
+      fctx.strokeRect(cx - side / 2, cy - side / 2, side, side);
+    } else if (f.k === 'ring'){
+      const base = f.small ? Math.max(8, cell * .7) : Math.max(10, cell * .8);
+      const reach = f.small ? Math.max(16, cell * 1.5) : Math.max(30, cell * 3);
+      const e = 1 - Math.pow(1 - t, 3);
+      fctx.globalAlpha = (1 - t) * f.a;
+      fctx.beginPath();
+      fctx.arc(cx, cy, base + reach * e, 0, Math.PI * 2);
+      fctx.lineWidth = 3.5 * (1 - t) + .5;
+      fctx.strokeStyle = 'rgba(20,24,50,.35)';        // och ranglar oq fonda yo‘qolmasin
+      fctx.stroke();
+      fctx.lineWidth = 2.2 * (1 - t) + .4;
+      fctx.strokeStyle = f.col;
+      fctx.stroke();
+    } else {                                           // bit
+      f.vy += 520 * dt;
+      f.dx += f.vx * dt; f.dy += f.vy * dt;
+      const sz = f.s * (1 - t * .5);
+      fctx.globalAlpha = 1 - t * t;
+      fctx.fillStyle = f.col;
+      fctx.fillRect(cx + f.dx - sz / 2, cy + f.dy - sz / 2, sz, sz);
+    }
+  }
+  fctx.globalAlpha = 1;
+  fxWas = fxItems.length > 0;
+}
 
 /* ================================================================
-   ENERGIYA  —  saqlanmaydi, oxirgi bo‘yash vaqtidan hisoblanadi
+   OVOZ va TITRASH  —  har bir bo‘yash "javob" qaytarsin
+   ================================================================ */
+let soundOn = true;
+try { soundOn = localStorage.getItem('mp_sound') !== '0'; } catch (e) {}
+let actx = null, lastTone = 0, lastHaptic = 0;
+const PENTA = [0, 2, 4, 7, 9];        // pentatonika: qanday bosilmasin, jarangdor eshitiladi
+
+function audio(){
+  if (!soundOn) return null;
+  if (!actx){
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e){ soundOn = false; return null; }
+  }
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function tone(freq, when, dur, vol, type){
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime + when;
+  o.type = type || 'sine'; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + .012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination);
+  o.start(t); o.stop(t + dur + .03);
+}
+function sfxPaint(ci, quiet){
+  const now = performance.now();
+  if (now - lastTone < 55) return;
+  lastTone = now;
+  const step = PENTA[ci % 5] + 12 * Math.floor((ci % 15) / 5);
+  tone(330 * Math.pow(2, step / 12), 0, .17, quiet ? .022 : .05, 'triangle');
+}
+function sfxCharge(){ tone(880, 0, .12, .03); tone(1319, .07, .17, .026); }
+function sfxWin(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .08, .24, .05, 'triangle')); }
+function sfxNo(){ tone(196, 0, .14, .04, 'sine'); }
+
+function haptic(kind){
+  const now = performance.now();
+  if (kind !== 'ok' && now - lastHaptic < 70) return;
+  lastHaptic = now;
+  const h = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback;
+  if (h){
+    if (kind === 'ok') h.notificationOccurred('success');
+    else if (kind === 'no') h.notificationOccurred('warning');
+    else h.impactOccurred('light');
+  } else if (navigator.vibrate){
+    navigator.vibrate(kind === 'ok' ? [14, 40, 14] : kind === 'no' ? 30 : 6);
+  }
+}
+
+/* ================================================================
+   BO‘YOQ (energiya)  —  saqlanmaydi, oxirgi bo‘yash vaqtidan hisoblanadi
    ================================================================ */
 function cooldownMs(){
   if (online < 10)   return 1000;
@@ -498,18 +844,54 @@ function spendOne(){
 
 const energyTxt = document.getElementById('energyTxt');
 const ebarFill  = document.getElementById('ebarFill');
-const ebarEl    = ebarFill.parentElement;
+const ebarEl    = document.getElementById('ebar');
+const brushEl   = document.getElementById('brush');
+const brushN    = document.getElementById('brushN');
+const plusEl    = document.getElementById('plus');
+let lastE = MAX_E;
+
+function retrigger(el, cls){
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+}
+
+/** Yangi bo‘yoq "keldi": cho‘tka sakraydi, +1 uchadi, ovoz va yorug‘lik. */
+function chargeGained(n){
+  if (document.hidden) return;
+  plusEl.textContent = '+' + n;
+  retrigger(plusEl, 'on');
+  retrigger(brushEl, 'pop');
+  retrigger(ebarEl, 'glow');
+  if (n <= 2) sfxCharge();
+}
 
 function paintEnergyUI(){
   const { e, next } = energyNow();
+  if (e > lastE) chargeGained(e - lastE);
+  if (e === 1 && lastE === 0 && !document.hidden) toast('Bo‘yoq qaytdi — davom eting!');
+  lastE = e;
+
   energyTxt.innerHTML = (e >= MAX_E)
-    ? '<b>' + e + '/' + MAX_E + '</b> · to‘liq'
-    : '<b>' + e + '/' + MAX_E + '</b> · +1 piksel ' + Math.ceil(next / 1000) + ' s';
+    ? '<b>' + e + '/' + MAX_E + '</b> · to‘la'
+    : '<b>' + e + '/' + MAX_E + '</b> · ' + Math.ceil(next / 1000) + ' s';
   ebarFill.style.width = (e / MAX_E * 100) + '%';
   ebarEl.setAttribute('aria-valuenow', e);
   ebarEl.setAttribute('aria-valuemax', MAX_E);
+  brushN.textContent = e;
+  brushEl.classList.toggle('empty', e < 1);
+  brushEl.classList.toggle('full', e >= MAX_E);
 }
 setInterval(paintEnergyUI, 200);
+
+/** Halqa (keyingi bo‘yoqqacha) — har kadrda silliq to‘ladi. */
+let lastRing = -1;
+function updateRing(){
+  const { e, next } = energyNow();
+  const p = e >= MAX_E ? 1 : Math.max(0, Math.min(1, 1 - next / cooldownMs()));
+  if (Math.abs(p - lastRing) > .002){
+    lastRing = p;
+    brushEl.style.setProperty('--p', p);
+  }
+}
 
 /* ================================================================
    BO‘YASH
@@ -521,22 +903,77 @@ function setPixel(x, y, v){
   dirty = true;
 }
 
-function paint(x, y){
-  if (x < 0 || y < 0 || x >= N || y >= N) return;
+const MILESTONES = {
+  1:     'Birinchi izingiz doskada qoldi! ✨',
+  10:    '10 ta piksel — rasmingiz shakllanmoqda',
+  25:    '25 ta piksel. Qo‘lingiz kelib qoldi!',
+  50:    '50 ta piksel — siz bu doskaning bir qismisiz',
+  100:   '100 ta piksel! Ijodingiz ko‘zga tashlanmoqda',
+  250:   '250 piksel — haqiqiy rassomlar shunday boshlaydi',
+  500:   '500 piksel! Do‘stlaringizga ko‘rsating',
+  1000:  '1000 piksel — bu katta ish!',
+  2500:  '2500 piksel. Doska sizni eslab qoladi',
+  5000:  '5000 piksel — ustasiz!',
+  10000: '10 000 piksel — afsona!'
+};
 
+function countPainted(x, y){
+  painted++;
+  try { localStorage.setItem('mp_painted', painted); } catch (e) {}
+  if (MILESTONES[painted]){
+    setTimeout(() => {
+      toast(MILESTONES[painted], true);
+      addPaintFx(x, y, color, true);
+      sfxWin(); haptic('ok');
+    }, 260);
+  }
+}
+
+let lastNoToast = 0;
+function noEnergy(){
+  const { next } = energyNow();
+  const now = performance.now();
+  retrigger(brushEl, 'shake');
+  if (now - lastNoToast > 1600){
+    lastNoToast = now;
+    toast('Bo‘yoq tiklanmoqda — ' + Math.max(1, Math.ceil(next / 1000)) + ' soniyadan keyin yana chizasiz');
+    sfxNo(); haptic('no');
+  }
+}
+
+/** @returns 'ok' | 'same' | 'none' (bo‘yoq yo‘q) | 'ro' | 'oob' */
+function paint(x, y, quiet){
+  if (x < 0 || y < 0 || x >= N || y >= N) return 'oob';
+  if (readonly){
+    if (!quiet) toast('Doska hozir faqat ko‘rish rejimida');
+    return 'ro';
+  }
+  if (state[y * N + x] === color){        // xuddi shu rang: bo‘yoq sarflamaymiz
+    addSameFx(x, y, color);
+    lastCell = { x, y }; showCoord(x, y);
+    return 'same';
+  }
   if (energyNow().e < 1){
-    toast('Energiya tugadi, biroz kuting');
-    return;
+    noEnergy();
+    return 'none';
   }
   spendOne();
+  lastE = energyNow().e;                  // sarflash "tiklanish" bo‘lib ko‘rinmasin
   paintEnergyUI();
 
-  const prev = state[y * N + x];      // server rad etsa — shu qiymatga qaytariladi
+  const prev = state[y * N + x];          // server rad etsa — shu qiymatga qaytariladi
   setPixel(x, y, color);
   lastCell = { x, y };
   showCoord(x, y);
 
+  retrigger(brushEl, 'squish');
+  addPaintFx(x, y, color, false);
+  sfxPaint(color, quiet);
+  haptic('tap');
+  countPainted(x, y);
+
   if (window.MP.onPaint) window.MP.onPaint(x, y, color, prev);   // -> WebSocket
+  return 'ok';
 }
 
 const coordTxt = document.getElementById('coordTxt');
@@ -545,11 +982,78 @@ function showCoord(x, y){
   coordTxt.dataset.empty = '0';
 }
 
+/** Doskadagi rangni tanlash (pipetka). */
+function pickAt(x, y){
+  if (x < 0 || y < 0 || x >= N || y >= N) return;
+  const v = state[y * N + x];
+  selectColor(v === EMPTY || v >= PALETTE.length ? 0 : v);
+  addSameFx(x, y, color);
+  toast('Rang tanlandi');
+  setPick(false);
+}
+
+/* ---------- chiziq tortish: navbatga qo‘yib, sekin-asta bo‘yaladi ---------- */
+const strokeQ = [];
+let strokeLast = null, strokeAt = 0;
+
+function lineCells(x0, y0, x1, y1){
+  const out = [];
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy, x = x0, y = y0;
+  while (x !== x1 || y !== y1){
+    const e2 = 2 * err;
+    if (e2 >= dy){ err += dy; x += sx; }
+    if (e2 <= dx){ err += dx; y += sy; }
+    out.push({ x, y });
+  }
+  return out;
+}
+function strokeTo(c){
+  if (!strokeLast){ strokeLast = c; return; }
+  if (c.x === strokeLast.x && c.y === strokeLast.y) return;
+  const cells = lineCells(strokeLast.x, strokeLast.y, c.x, c.y);
+  for (const p of cells) if (strokeQ.length < 400) strokeQ.push(p);
+  strokeLast = c;
+}
+function endStroke(){ strokeQ.length = 0; strokeLast = null; }
+
+function pumpStroke(now){
+  while (strokeQ.length && now - strokeAt >= STROKE_MS){
+    strokeAt = now;
+    const c = strokeQ.shift();
+    const r = paint(c.x, c.y, true);
+    if (r === 'none' || r === 'ro'){ strokeQ.length = 0; break; }
+    if (r === 'same') continue;             // bir xil katakni o‘tkazib yuboramiz
+    break;                                   // har kadrda bittadan — chiziq "chizilayotgandek" ko‘rinadi
+  }
+}
+
+/* ================================================================
+   ASOSIY SIKL
+   ================================================================ */
+let prevT = performance.now();
+function loop(now){
+  const dt = Math.min(.05, (now - prevT) / 1000 || .016);
+  prevT = now;
+
+  stepCamera(now, dt);
+  if (strokeQ.length) pumpStroke(now);
+  if (dirty){ dirty = false; render(); updateZoomTxt(); }
+  if (fxItems.length || fxWas) renderFx(now, dt);
+  if (lastRing < 1 || lastE < MAX_E) updateRing();
+
+  requestAnimationFrame(loop);
+}
+/* loop() skript OXIRIDA (START bo'limida) ishga tushadi: u pastda e'lon
+   qilingan o'zgaruvchilarga tayanadi. */
+
 /* ================================================================
    POINTER EVENTS  —  sichqoncha va barmoq bitta kod bilan
    ================================================================ */
 const pts = new Map();
-let moved = false, pinch = null, lastTap = 0, lastTapPos = null;
+let moved = false, pinch = null, gesture = null;   // gesture: 'pan' | 'stroke' | 'none'
+let vel = null;                                     // inersiya uchun tezlik
 
 function pinchState(){
   const it = pts.values();
@@ -563,9 +1067,37 @@ function pinchState(){
 
 board.addEventListener('pointerdown', e => {
   board.setPointerCapture(e.pointerId);
+  audio();                                           // brauzer ovozni faqat bosishdan keyin ochadi
+  cancelAnim();
   pts.set(e.pointerId, { x:e.clientX, y:e.clientY, sx:e.clientX, sy:e.clientY });
-  if (pts.size === 1) moved = false;
-  else if (pts.size === 2){ pinch = pinchState(); moved = true; }
+
+  if (pts.size === 2){                               // ikkinchi barmoq: chimchilash
+    endStroke();
+    pinch = pinchState(); moved = true; gesture = 'pan';
+    return;
+  }
+  if (pts.size > 2) return;
+
+  moved = false; vel = null;
+  const c = toBoard(e.clientX, e.clientY);
+
+  // O‘ng tugma yoki Alt+bosish — rang olish
+  if ((e.pointerType === 'mouse' && e.button === 2) || e.altKey || pickMode){
+    if (inBoard(c)) pickAt(c.x, c.y);
+    gesture = 'none'; moved = true;
+    return;
+  }
+  if (e.pointerType === 'mouse' && e.button === 1){ gesture = 'pan'; moved = true; return; }
+
+  const wantStroke = drawMode || (e.pointerType === 'mouse' && e.shiftKey);
+  if (wantStroke && scale >= ZOOM_ASSIST && inBoard(c)){
+    gesture = 'stroke'; moved = true;
+    endStroke();
+    paint(c.x, c.y);
+    strokeLast = c;
+    return;
+  }
+  gesture = 'pan';
 });
 
 board.addEventListener('pointermove', e => {
@@ -574,8 +1106,7 @@ board.addEventListener('pointermove', e => {
   if (!p){                                   // bosilmagan sichqoncha — hover
     if (e.pointerType === 'mouse'){
       const b = toBoard(e.clientX, e.clientY);
-      const inside = b.x >= 0 && b.y >= 0 && b.x < N && b.y < N;
-      const nh = inside ? b : null;
+      const nh = inBoard(b) ? b : null;
       if (!!nh !== !!hover || (nh && hover && (nh.x !== hover.x || nh.y !== hover.y))){
         hover = nh; dirty = true;
       }
@@ -587,10 +1118,25 @@ board.addEventListener('pointermove', e => {
   p.x = e.clientX; p.y = e.clientY;
 
   if (pts.size === 1){
+    if (gesture === 'stroke'){
+      const c = toBoard(p.x, p.y);
+      if (inBoard(c)) strokeTo(c);
+      if (e.pointerType === 'mouse'){ hover = inBoard(c) ? c : null; dirty = true; }
+      return;
+    }
+    if (gesture === 'none') return;
     if (!moved && Math.hypot(p.x - p.sx, p.y - p.sy) > DRAG_SLOP) moved = true;
     if (moved){
       viewMode = 'free';
       ox += p.x - px; oy += p.y - py; clampPan(); dirty = true;
+      board.classList.add('pan');
+      const t = performance.now();
+      if (vel){
+        const dt = Math.max(1, t - vel.t) / 1000;
+        vel.vx = vel.vx * .6 + ((p.x - px) / dt) * .4;
+        vel.vy = vel.vy * .6 + ((p.y - py) / dt) * .4;
+        vel.t = t;
+      } else vel = { vx:0, vy:0, t };
     }
   } else if (pts.size === 2 && pinch){
     const cur = pinchState();
@@ -611,37 +1157,35 @@ function endPointer(e){
   if (pts.size === 1){            // 2 barmoqdan 1 taga — sakrashni oldini olish
     const r = pts.values().next().value;
     r.sx = r.x; r.sy = r.y;
-    moved = true;
+    moved = true; gesture = 'pan';
     return;
   }
   if (pts.size === 0 && p){
-    if (!moved) handleTap(p.x, p.y);
-    moved = false;
+    board.classList.remove('pan');
+    if (gesture === 'stroke'){
+      // navbatdagilarni tugatib bo‘lguncha qoldiramiz, faqat boshqa chiziq boshlamaymiz
+      strokeLast = null;
+    } else if (gesture === 'pan'){
+      if (!moved) handleTap(p.x, p.y);
+      else if (vel && performance.now() - vel.t < 90 && Math.hypot(vel.vx, vel.vy) > 220){
+        inertia = { vx: vel.vx, vy: vel.vy };
+      }
+    }
+    moved = false; gesture = null; vel = null;
   }
 }
 board.addEventListener('pointerup', endPointer);
-board.addEventListener('pointercancel', endPointer);
+board.addEventListener('pointercancel', e => { endStroke(); endPointer(e); });
 board.addEventListener('pointerleave', () => { if (hover){ hover = null; dirty = true; } });
 
 function handleTap(sx, sy){
-  const now = Date.now();
-  const dbl = (now - lastTap < 300) && lastTapPos &&
-              Math.hypot(sx - lastTapPos[0], sy - lastTapPos[1]) < 24;
   const b = toBoard(sx, sy);
+  if (!inBoard(b)) return;
 
-  if (dbl){                       // ikkinchi bosish bo‘yamaydi — yaqinlashtiradi
-    lastTap = 0;
-    centerOn(
-      Math.min(N-1, Math.max(0, b.x)),
-      Math.min(N-1, Math.max(0, b.y)),
-      scale * 2.5
-    );
-    return;
-  }
-  lastTap = now; lastTapPos = [sx, sy];
-
-  if (TAP_ZOOM_BELOW && scale < TAP_ZOOM_BELOW){
-    centerOn(Math.min(N-1, Math.max(0, b.x)), Math.min(N-1, Math.max(0, b.y)), TAP_ZOOM_BELOW * 2);
+  // Juda uzoqdan bosish noaniq: xato piksel qo‘ymaslik uchun avval yaqinlashtiramiz.
+  if (scale < ZOOM_ASSIST){
+    flyToCell(b.x, b.y, Math.max(10, scale * 4), 360);
+    toast('Yaqinlashtirildi — endi aniq katakni bosing');
     return;
   }
   paint(b.x, b.y);                // bosish = darhol bo‘yash
@@ -652,31 +1196,66 @@ board.addEventListener('wheel', e => {
   let dy = e.deltaY;
   if (e.deltaMode === 1) dy *= 16;          // satr rejimi
   else if (e.deltaMode === 2) dy *= H;      // sahifa rejimi
-  zoomAt(e.clientX, e.clientY, scale * Math.exp(-dy * 0.0015));
+  const f = Math.exp(-dy * (e.ctrlKey ? 0.012 : 0.0022));   // ctrl = trekpad chimchilashi
+  const base = wheel ? wheel.target : scale;
+  const target = clampScale(base * f);
+  tween = null; inertia = null; viewMode = 'free';
+  if (REDUCED){ zoomAt(e.clientX, e.clientY, target); return; }
+  if (!wheel || Math.hypot(e.clientX - wheel.sx, e.clientY - wheel.sy) > 4){
+    wheel = { sx:e.clientX, sy:e.clientY, bx:(e.clientX - ox) / scale,
+              by:(e.clientY - oy) / scale, target };
+  } else wheel.target = target;
+  dirty = true;
 }, { passive:false });
 
 board.addEventListener('contextmenu', e => e.preventDefault());
 
-/* --- klaviatura: strelka bilan surish --- */
+/* --- klaviatura --- */
 addEventListener('keydown', e => {
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  if (e.ctrlKey || e.metaKey) return;
+  const k = e.key;
+
+  if (k === '+' || k === '='){ zoomButton(1.6); e.preventDefault(); return; }
+  if (k === '-' || k === '_'){ zoomButton(1 / 1.6); e.preventDefault(); return; }
+  if (k === '0'){ fitAll(true); return; }
+  if (k === 'd' || k === 'D'){ setDraw(!drawMode); return; }
+  if (k === 'm' || k === 'M'){ setSound(!soundOn); return; }
+  if (k === '[' ){ selectColor((color + PALETTE.length - 1) % PALETTE.length); return; }
+  if (k === ']' ){ selectColor((color + 1) % PALETTE.length); return; }
+
   const step = e.shiftKey ? 160 : 40;
   let dx = 0, dy = 0;
-  if (e.key === 'ArrowLeft')  dx =  step;
-  else if (e.key === 'ArrowRight') dx = -step;
-  else if (e.key === 'ArrowUp')    dy =  step;
-  else if (e.key === 'ArrowDown')  dy = -step;
+  if (k === 'ArrowLeft')  dx =  step;
+  else if (k === 'ArrowRight') dx = -step;
+  else if (k === 'ArrowUp')    dy =  step;
+  else if (k === 'ArrowDown')  dy = -step;
   else return;
   e.preventDefault();
-  viewMode = 'free';
-  ox += dx; oy += dy; clampPan(); dirty = true;
+  tweenTo(scale, ox + dx, oy + dy, 140);
 });
 
 /* ================================================================
    UI
    ================================================================ */
 const paletteEl = document.getElementById('palette');
+
+function textOn(hex){                  // rang ustidagi raqam o‘qilishi uchun
+  const [r, g, b] = [1,3,5].map(i => parseInt(hex.slice(i, i+2), 16));
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1B2340' : '#FFFFFF';
+}
+
+function selectColor(i){
+  color = i;
+  paletteEl.querySelectorAll('.sw').forEach((s, k) =>
+    s.setAttribute('aria-pressed', String(k === i)));
+  brushEl.style.setProperty('--c', PALETTE[i]);
+  brushEl.style.setProperty('--cf', textOn(PALETTE[i]));
+  retrigger(brushEl, 'tint');
+  dirty = true;
+}
+
 PALETTE.forEach((hex, i) => {
   const b = document.createElement('button');
   b.className = 'sw';
@@ -684,24 +1263,42 @@ PALETTE.forEach((hex, i) => {
   b.type = 'button';
   b.setAttribute('aria-label', 'Rang ' + hex);
   b.setAttribute('aria-pressed', String(i === color));
-  b.addEventListener('click', () => {
-    color = i;
-    paletteEl.querySelectorAll('.sw').forEach((s, k) =>
-      s.setAttribute('aria-pressed', String(k === i)));
-    dirty = true;
-  });
+  b.addEventListener('click', () => { audio(); selectColor(i); haptic('tap'); });
   paletteEl.appendChild(b);
 });
+brushEl.style.setProperty('--c', PALETTE[color]);
+brushEl.style.setProperty('--cf', textOn(PALETTE[color]));
 
-document.getElementById('fitBtn').addEventListener('click', fitAll);
-document.getElementById('zinBtn').addEventListener('click', () => {
-  const c = lastCell || centerCell();
-  centerOn(c.x, c.y, scale * 2);
-});
-document.getElementById('zoutBtn').addEventListener('click', () => {
-  const c = lastCell || centerCell();
-  centerOn(c.x, c.y, scale / 2);
-});
+const drawBtn = document.getElementById('drawBtn');
+const pickBtn = document.getElementById('pickBtn');
+const sndBtn  = document.getElementById('sndBtn');
+
+function setDraw(on){
+  drawMode = !!on;
+  drawBtn.setAttribute('aria-pressed', String(drawMode));
+  if (drawMode) toast('Chizish rejimi: barmoqni sudrab chizing (ikki barmoq — surish)');
+}
+function setPick(on){
+  pickMode = !!on;
+  pickBtn.setAttribute('aria-pressed', String(pickMode));
+  board.classList.toggle('picking', pickMode);
+  if (pickMode) toast('Doskadagi istalgan katakni bosing — uning rangi olinadi');
+}
+function setSound(on){
+  soundOn = !!on;
+  sndBtn.setAttribute('aria-pressed', String(soundOn));
+  try { localStorage.setItem('mp_sound', soundOn ? '1' : '0'); } catch (e) {}
+  if (soundOn){ audio(); sfxCharge(); }
+}
+drawBtn.addEventListener('click', () => setDraw(!drawMode));
+pickBtn.addEventListener('click', () => setPick(!pickMode));
+sndBtn.addEventListener('click', () => setSound(!soundOn));
+sndBtn.setAttribute('aria-pressed', String(soundOn));
+
+document.getElementById('fitBtn').addEventListener('click', () => fitAll(true));
+document.getElementById('zinBtn').addEventListener('click', () => zoomButton(1.8));
+document.getElementById('zoutBtn').addEventListener('click', () => zoomButton(1 / 1.8));
+
 document.getElementById('friendsBtn').addEventListener('click', () => {
   if (window.MP.onFriends) window.MP.onFriends();
   else toast('Bu funksiya server bilan ishlaydi');
@@ -712,20 +1309,82 @@ document.getElementById('reportBtn').addEventListener('click', () => {
   if (window.MP.onReport) window.MP.onReport(lastCell.x, lastCell.y);
 });
 
+/* --- ulashish: shu koordinata va zoom bilan havola --- */
+function shareUrl(){
+  const c = lastCell || centerCell();
+  return location.origin + location.pathname + '#' + c.x + ',' + c.y + ',' + Math.round(scale);
+}
+document.getElementById('shareBtn').addEventListener('click', () => {
+  const url = shareUrl();
+  const title = (CFG.site_name || 'Million Piksel');
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (navigator.share){
+    navigator.share({ title, text: 'Mana bu joyni ko‘ring!', url }).catch(() => {});
+  } else if (tg && tg.openTelegramLink){
+    tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(url) +
+                        '&text=' + encodeURIComponent('Mana bu joyni ko‘ring!'));
+  } else if (navigator.clipboard){
+    navigator.clipboard.writeText(url).then(
+      () => toast('Havola nusxalandi'), () => toast(url));
+  } else toast(url);
+});
+
+/* --- doskani PNG qilib saqlash --- */
+document.getElementById('saveBtn').addEventListener('click', () => {
+  off.toBlob(b => {
+    if (!b){ toast('Saqlab bo‘lmadi'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'million-piksel-' + new Date().toISOString().slice(0, 10) + '.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('Doska rasm sifatida saqlandi');
+  }, 'image/png');
+});
+
 /* --- toast --- */
 const toastEl = document.getElementById('toast');
 let toastT = 0;
-function toast(msg){
+function toast(msg, win){
   toastEl.textContent = msg;
+  toastEl.classList.toggle('win', !!win);
   toastEl.classList.add('on');
   clearTimeout(toastT);
-  toastT = setTimeout(() => toastEl.classList.remove('on'), 2000);
+  toastT = setTimeout(() => toastEl.classList.remove('on'), win ? 3200 : 2200);
+  document.getElementById('srLog').textContent = msg;
 }
 
 const onlineTxt = document.getElementById('onlineTxt');
 function paintOnlineUI(){
   onlineTxt.textContent = online + ' onlayn';
 }
+
+const zoomTxt = document.getElementById('zoomTxt');
+let lastZoomTxt = '';
+function updateZoomTxt(){
+  const t = '×' + (scale < 10 ? scale.toFixed(1).replace(/\.0$/, '') : Math.round(scale));
+  if (t !== lastZoomTxt){ lastZoomTxt = t; zoomTxt.textContent = t; }
+}
+
+/* --- e'lon va "faqat ko'rish" holati --- */
+const announceEl = document.getElementById('announce');
+const announceTxt = document.getElementById('announceTxt');
+let announcement = '', announceClosed = '';
+function paintAnnounce(){
+  const msg = readonly ? 'Doska hozir faqat ko‘rish rejimida — chizish vaqtincha to‘xtatilgan'
+                       : announcement;
+  const show = msg && msg !== announceClosed;
+  announceEl.hidden = !show;
+  announceEl.classList.toggle('ro', readonly);
+  announceTxt.textContent = msg || '';
+  measure(); resize();
+}
+document.getElementById('announceX').addEventListener('click', () => {
+  announceClosed = readonly ? 'Doska hozir faqat ko‘rish rejimida — chizish vaqtincha to‘xtatilgan' : announcement;
+  try { sessionStorage.setItem('mp_ann_closed', announceClosed); } catch (e) {}
+  paintAnnounce();
+});
+try { announceClosed = sessionStorage.getItem('mp_ann_closed') || ''; } catch (e) {}
 
 /* ================================================================
    O‘LCHAMLAR
@@ -744,6 +1403,7 @@ function resize(){
   W = board.clientWidth; H = board.clientHeight;
   board.width  = Math.round(W * dpr);
   board.height = Math.round(H * dpr);
+  fxc.width = board.width; fxc.height = board.height;
 
   if (viewMode === 'fit')        scale = minScale();
   else if (viewMode === 'cover') applyCover();
@@ -754,21 +1414,36 @@ function resize(){
 }
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 120));
-new ResizeObserver(resize).observe(document.querySelector('.bottom'));
+const ro = new ResizeObserver(resize);
+ro.observe(document.querySelector('.bottom'));
+ro.observe(document.querySelector('.top'));
 
 const mq = matchMedia('(prefers-color-scheme: dark)');
 (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(readTheme);
+
+/* ================================================================
+   HAVOLADAGI KOORDINATA:  /#x,y,zoom
+   ================================================================ */
+let pendingView = null;
+(function parseHash(){
+  const m = /^#(\d{1,3}),(\d{1,3})(?:,(\d{1,2}))?$/.exec(location.hash);
+  if (m && +m[1] < N && +m[2] < N) pendingView = { x:+m[1], y:+m[2], z:Math.max(4, +(m[3] || 14)) };
+})();
 
 /* ================================================================
    BACKEND UCHUN OCHIQ API
    ================================================================ */
 window.MP = {
   /** Boshqa foydalanuvchi qo‘ygan piksel (WebSocket'dan). */
-  remotePixel(x, y, v){ setPixel(x, y, v); },
+  remotePixel(x, y, v){ setPixel(x, y, v); addRemoteFx(x, y, v); },
 
   /** Bir nechta piksel — bitta kadrda (batch). */
   remoteBatch(list){
-    for (let i = 0; i < list.length; i += 3) setPixel(list[i], list[i+1], list[i+2]);
+    const many = list.length > 3 * 40;          // katta paketda effekt qilmaymiz
+    for (let i = 0; i < list.length; i += 3){
+      setPixel(list[i], list[i+1], list[i+2]);
+      if (!many) addRemoteFx(list[i], list[i+1], list[i+2]);
+    }
   },
 
   /** Serverdagi 1 000 000 baytlik snapshot. */
@@ -790,7 +1465,25 @@ window.MP = {
     eBase = Math.max(0, Math.min(MAX_E, e | 0));
     const cd = cooldownMs();
     eAt = (nextMs > 0) ? Date.now() - (cd - Math.min(cd, nextMs)) : Date.now();
+    lastE = energyNow().e;               // sinxronlash "yangi bo'yoq keldi" emas
     paintEnergyUI();
+  },
+
+  /** Serverdagi jami qo‘yilgan piksellar (yutuqlar shundan hisoblanadi). */
+  setPainted(n){
+    n = n | 0;
+    if (n > painted){
+      painted = n;
+      try { localStorage.setItem('mp_painted', painted); } catch (e) {}
+    }
+  },
+
+  /** E'lon va faqat-ko'rish rejimi (server boshqaradi). */
+  setSite(s){
+    if (!s) return;
+    announcement = s.announcement || '';
+    readonly = !!s.readonly;
+    paintAnnounce();
   },
 
   getPixel(x, y){ return state[y * N + x]; },
@@ -798,8 +1491,15 @@ window.MP = {
   palette: PALETTE,
   size: N,
 
-  /** Butun doska ko'rinadigan masshtab. */
-  fit: fitAll,
+  /** Kirgandan keyingi ko'rinish: havoladagi koordinata bo'lsa — o'sha joy, aks holda butun doska. */
+  fit(){
+    if (pendingView){
+      const v = pendingView; pendingView = null;
+      flyToCell(v.x, v.y, v.z, 700);
+      lastCell = { x: v.x, y: v.y };
+      showCoord(v.x, v.y);
+    } else fitAll(false);
+  },
 
   /** Doska butun ekranni qoplaydigan masshtab — kirish ekrani foni uchun.
    *  Shunda orqada kichkina kvadrat emas, to'ldirilgan rasm ko'rinadi. */
@@ -812,54 +1512,18 @@ window.MP = {
 };
 
 /* ================================================================
-   DEMO  (DEMO = false qilinsa butunlay o‘chadi)
-   ================================================================ */
-function seedDemo(){
-  const t = document.createElement('canvas');
-  t.width = t.height = N;
-  const tc = t.getContext('2d');
-  tc.fillStyle = '#fff'; tc.fillRect(0, 0, N, N);
-  tc.fillStyle = '#000';
-  tc.textAlign = 'center'; tc.textBaseline = 'middle';
-  tc.font = 'bold 190px system-ui, sans-serif';
-  tc.fillText('MILLION', 500, 430);
-  tc.fillText('PIKSEL',  500, 600);
-
-  const d = tc.getImageData(0, 0, N, N).data;
-  for (let i = 0; i < N*N; i++){
-    if (d[i*4] < 128) state[i] = (Math.floor(i / N) < 515) ? 6 : 13;   // qizil / ko‘k
-  }
-  // tarqoq bloklar — doska "tirik" ko‘rinsin
-  let s = 12345;
-  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
-  for (let k = 0; k < 120; k++){
-    const cx = (rnd() * N) | 0, cy = (rnd() * N) | 0;
-    const c  = (rnd() * PALETTE.length) | 0;
-    const w  = 3 + ((rnd() * 14) | 0), h = 3 + ((rnd() * 14) | 0);
-    for (let yy = cy; yy < Math.min(N, cy + h); yy++)
-      for (let xx = cx; xx < Math.min(N, cx + w); xx++)
-        state[yy * N + xx] = c;
-  }
-  blitAll();
-}
-
-/* ================================================================
    START
    ================================================================ */
+if (CFG.site_name) document.getElementById('brandTxt').textContent = CFG.site_name;
+announcement = CFG.announcement || '';
 readTheme();
 resize();
-if (DEMO) seedDemo();
-fitAll();
+fitAll(false);
 paintOnlineUI();
 paintEnergyUI();
-
-// Demo uchun onlayn soni sekin o‘zgaradi. Backend ulanganda o‘chiring.
-if (DEMO){
-  setInterval(() => {
-    online = Math.max(3, Math.min(9, online + (Math.random() < .5 ? -1 : 1)));
-    paintOnlineUI();
-  }, 4000);
-}
+paintAnnounce();
+updateRing();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>

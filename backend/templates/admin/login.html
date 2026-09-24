@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Kirish — Million Piksel</title>
+<link rel="icon" href="/icon-32.png">
+<style>
+:root{
+  --bg:#EFE7D6; --panel:#FFFAF0; --text:#1B2340; --muted:#6B6480;
+  --line:#DBCBAE; --accent:#1E7F86; --danger:#B3261E; --r:10px; --rp:16px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#11152A; --panel:#1B2140; --text:#EFE7D6; --muted:#9A93AE;
+         --line:#2E3660; --accent:#49B6BD; --danger:#F2746B; }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;
+  display:flex;align-items:center;justify-content:center;padding:16px;
+}
+.card{
+  width:100%;max-width:380px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--rp);padding:28px 24px 24px;
+}
+.logo{display:block;width:56px;height:56px;margin:0 auto 14px;
+      image-rendering:pixelated;border-radius:12px}
+h1{margin:0 0 4px;font-size:20px;text-align:center}
+.sub{margin:0 0 22px;text-align:center;color:var(--muted);font-size:13px}
+label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px}
+input{
+  width:100%;padding:12px 13px;font:inherit;color:inherit;
+  background:transparent;border:1px solid var(--line);border-radius:var(--r);
+}
+input:focus{outline:3px solid color-mix(in srgb,var(--accent) 35%,transparent);
+            border-color:var(--accent)}
+button{
+  width:100%;margin-top:22px;padding:13px;border:0;border-radius:var(--r);
+  background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer;
+}
+button:active{transform:translateY(1px)}
+.err{
+  margin:0 0 4px;padding:10px 12px;border-radius:var(--r);font-size:13px;
+  color:var(--danger);border:1px solid var(--danger);
+  background:color-mix(in srgb,var(--danger) 8%,transparent);
+}
+.back{display:block;margin-top:18px;text-align:center;font-size:12px;
+      color:var(--muted);text-decoration:none}
+.back:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<form class="card" method="post" autocomplete="on">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <img class="logo" src="/icon-192.png" alt="">
+  <h1>Million Piksel</h1>
+  <p class="sub">Boshqaruv paneli — faqat superuser</p>
+
+  {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
+
+  <label for="u">Login</label>
+  <input id="u" name="username" type="text" required autofocus
+         autocomplete="username" autocapitalize="none" spellcheck="false">
+
+  <label for="p">Parol</label>
+  <input id="p" name="password" type="password" required
+         autocomplete="current-password">
+
+  <button type="submit">Kirish</button>
+  <a class="back" href="/">← Saytga qaytish</a>
+</form>
+</body>
+</html>

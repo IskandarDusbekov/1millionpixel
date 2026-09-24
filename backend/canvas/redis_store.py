@@ -11,6 +11,8 @@ ikkita ulanishdan bir vaqtda so'rov yuborib, energiyani chetlab o'ta oladi
 """
 from __future__ import annotations
 
+import json
+
 import redis
 import redis.asyncio as aioredis
 from django.conf import settings
@@ -27,6 +29,12 @@ K_PIXEL_CH = "mp:ch:pixels"     # pub/sub: piksel paketlari
 K_ONLINE_CH = "mp:ch:online"    # pub/sub: onlayn soni
 K_PLACED = "mp:placed"          # jami qo'yilgan piksel (timelapse faolligi)
 K_TIMELAPSE_ON = "mp:timelapse:on"   # surat olish yoqilganmi
+K_READONLY = "mp:readonly"      # "faqat ko'rish" rejimi (admin paneldan)
+
+
+def k_botlogin(code: str) -> str:
+    """Telegram bot orqali kirish: kod -> (kutilmoqda | foydalanuvchi JSON)."""
+    return f"mp:botlogin:{code}"
 
 
 def k_energy(uid: int) -> str:
@@ -218,6 +226,60 @@ class Store:
     def online_cached_sync(self) -> int:
         v = self.sync.get(K_ONLINE_N)
         return int(v) if v else 0
+
+    # -------------------------------------------------- umumiy yordamchilar
+    def rate_hit_sync(self, key: str, window_sec: int) -> int:
+        """Oynadagi urinishlar sonini oshiradi va yangi qiymatni qaytaradi."""
+        n = self.sync.incr(key)
+        if n == 1:
+            self.sync.expire(key, window_sec)
+        return int(n)
+
+    def rate_get_sync(self, key: str) -> int:
+        v = self.sync.get(key)
+        return int(v) if v else 0
+
+    def key_delete_sync(self, key: str) -> None:
+        self.sync.delete(key)
+
+    async def is_readonly(self) -> bool:
+        return bool(await self.aio.exists(K_READONLY))
+
+    # -------------------------------------------------- bot orqali kirish
+    # Yozuv JSON: {"s": "p", ip, ua}  — brauzer kutmoqda,
+    #             {"s": "ok", telegram_id, ...} — bot tasdiqladi.
+    def botlogin_create_sync(self, code: str, meta: dict, ttl: int = 300) -> None:
+        self.sync.set(k_botlogin(code), json.dumps({"s": "p", **meta}).encode(),
+                      ex=ttl)
+
+    def botlogin_get_sync(self, code: str) -> dict | None:
+        v = self.sync.get(k_botlogin(code))
+        return json.loads(v) if v else None
+
+    def botlogin_confirm_sync(self, code: str, info: dict, ttl: int = 120) -> bool:
+        """Faqat KUTILAYOTGAN kodni tasdiqlaydi (yo'q kodga yozmaydi)."""
+        cur = self.botlogin_get_sync(code)
+        if not cur or cur.get("s") != "p":
+            return False
+        return bool(self.sync.set(k_botlogin(code),
+                                  json.dumps({"s": "ok", **info}).encode(),
+                                  xx=True, ex=ttl))
+
+    def botlogin_take_sync(self, code: str) -> dict | None:
+        """None — kod yo'q/eskirgan; {"s":"p"} — kutilmoqda;
+        {"s":"ok",...} — tasdiqlangan (bir marta beriladi va o'chiriladi)."""
+        key = k_botlogin(code)
+        v = self.sync.get(key)
+        if not v:
+            return None
+        cur = json.loads(v)
+        if cur.get("s") != "ok":
+            return cur
+        pipe = self.sync.pipeline(transaction=True)
+        pipe.get(key)
+        pipe.delete(key)
+        got, _ = pipe.execute()
+        return json.loads(got) if got else None
 
     # -------------------------------------------------- ban
     async def is_banned(self, uid: int, ip: str) -> bool:

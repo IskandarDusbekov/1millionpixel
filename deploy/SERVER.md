@@ -186,7 +186,6 @@ POSTGRES_PASSWORD=<yuqoridagi uchinchi qiymat>
 DEBUG=0
 USE_SQLITE=0
 FAKE_REDIS=0
-DEV_LOGIN=0
 
 ALLOWED_HOSTS=piksel.SIZNING-DOMEN.uz
 CSRF_TRUSTED_ORIGINS=https://piksel.SIZNING-DOMEN.uz
@@ -198,11 +197,11 @@ BROADCAST_INTERVAL_MS=100
 
 TELEGRAM_BOT_TOKEN=<@BotFather bergan token>
 TELEGRAM_BOT_USERNAME=<bot nomi, @ siz>
-GOOGLE_CLIENT_ID=<Google OAuth Client ID>
 ```
 
-> `DEV_LOGIN=0` — **majburiy**. 1 bo'lsa, har kim parolsiz cheksiz hisob
-> ochib, energiya limitini butunlay chetlab o'tadi.
+> `DEBUG=0`, `USE_SQLITE=0`, `FAKE_REDIS=0` — **majburiy**. Parolsiz kirish
+> yo'li loyihada yo'q: saytga faqat Telegram hisobi bilan kiriladi, admin
+> panelga esa faqat superuser login va paroli bilan.
 
 Fayl faqat sizga ko'rinadigan bo'lsin:
 
@@ -338,11 +337,23 @@ cd /opt/millionpixel && docker compose run --rm web python manage.py telegram_bo
 
 `Bot: @sizning_bot` va `Menyu tugmasi sozlandi` chiqishi kerak.
 
-`/start` javobini ham ishlatmoqchi bo'lsangiz, botni doimiy qo'shing:
+**Botni doimiy ishlatib qo'ying — bu majburiy.** Oddiy brauzerdan «Telegram
+bot orqali kirish» tugmasi shu bot orqali ishlaydi (foydalanuvchi botda
+«Tasdiqlayman» ni bosadi). Bot to'xtab qolsa, Mini App ichidan kirish
+ishlayveradi, lekin brauzerdan kirib bo'lmaydi.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d bot
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 20 bot
 ```
+
+> Bitta bot tokeniga faqat BITTA `telegram_bot` jarayoni ulanishi mumkin
+> (Telegram long polling shuni talab qiladi) va tokenda webhook o'rnatilgan
+> bo'lmasligi kerak.
+
+Nginx'ni yangilagandan keyin admin panelga fayl yuklash ishlashi uchun
+(`deploy/nginx-host.conf` dagi `/admin/panel/api/files/upload` bloki, 6 MB
+gacha) `sudo nginx -t && sudo systemctl reload nginx` ni unutmang.
 
 ---
 
@@ -353,10 +364,11 @@ curl -sI https://piksel.HAQIQIY-DOMEN.uz | head -1
 ```
 
 - [ ] Sayt ochiladi, kirish ekrani ko'rinadi
-- [ ] Google orqali kirish ishlaydi
+- [ ] «Telegram bot orqali kirish» → botda «Tasdiqlayman» → sayt o'zi kiradi
 - [ ] Piksel qo'yiladi va **ikkinchi brauzerda darhol ko'rinadi**
-- [ ] `/admin/` — dashboard raqamlari chiqadi
-- [ ] `/admin/panel/` — moderatsiya paneli ochiladi
+- [ ] `/admin/panel/` — login/parol so'raydi, superuser bilan kirilganda panel ochiladi
+- [ ] Panelda **SEO** bo'limida asosiy manzilni yozib saqlang; `/robots.txt` va `/sitemap.xml` to'g'ri chiqadi
+- [ ] Panelda rasm yuklab ko'ring (413 chiqsa — nginx yangilanmagan)
 - [ ] Telegram'da bot ochilib, Mini App ishlaydi
 
 WebSocket ishlayotganini log'dan ko'rish:
